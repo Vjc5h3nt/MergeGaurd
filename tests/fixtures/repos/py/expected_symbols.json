@@ -1,0 +1,29 @@
+[
+  {
+    "name": "process_payment",
+    "kind": "function",
+    "file": "tests/fixtures/repos/py/sample_pr.py",
+    "start_line": 5,
+    "end_line": 8,
+    "language": "python",
+    "parent": null
+  },
+  {
+    "name": "validate_amount",
+    "kind": "function",
+    "file": "tests/fixtures/repos/py/sample_pr.py",
+    "start_line": 11,
+    "end_line": 20,
+    "language": "python",
+    "parent": null
+  },
+  {
+    "name": "PaymentProcessor",
+    "kind": "class",
+    "file": "tests/fixtures/repos/py/sample_pr.py",
+    "start_line": 23,
+    "end_line": 30,
+    "language": "python",
+    "parent": null
+  }
+]

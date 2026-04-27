@@ -1,0 +1,50 @@
+name: MergeGuard
+description: AI PR Code Review Agent powered by AWS Strands SDK and Amazon Bedrock
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  aws-region:
+    description: AWS region for Bedrock
+    default: us-east-1
+    required: false
+  bedrock-model-id:
+    description: Amazon Bedrock model ID
+    default: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+    required: false
+  risk-threshold-block:
+    description: Risk score above which merge is blocked (0-100)
+    default: "75"
+    required: false
+  risk-threshold-warn:
+    description: Risk score above which a warning is posted (0-100)
+    default: "50"
+    required: false
+  dry-run:
+    description: If 'true', print review without posting to GitHub
+    default: "false"
+    required: false
+
+outputs:
+  risk-score:
+    description: Numeric risk score (0-100)
+  risk-bucket:
+    description: Risk bucket (LOW | MEDIUM | HIGH | BLOCKING)
+  review-id:
+    description: GitHub review ID that was posted
+
+runs:
+  using: docker
+  image: Dockerfile
+  env:
+    GITHUB_TOKEN: ${{ github.token }}
+    AWS_REGION: ${{ inputs.aws-region }}
+    BEDROCK_MODEL_ID: ${{ inputs.bedrock-model-id }}
+    MERGEGUARD_RISK_THRESHOLD_BLOCK: ${{ inputs.risk-threshold-block }}
+    MERGEGUARD_RISK_THRESHOLD_WARN: ${{ inputs.risk-threshold-warn }}
+    DRY_RUN: ${{ inputs.dry-run }}
+    PR_NUMBER: ${{ github.event.pull_request.number }}
+    REPO_OWNER: ${{ github.repository_owner }}
+    REPO_NAME: ${{ github.event.repository.name }}

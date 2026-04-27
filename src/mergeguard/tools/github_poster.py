@@ -195,7 +195,7 @@ def _render_review_body(
             lines.append(f"| `{path}` | {_table_cell(path, status, file_issues)} |")
         lines += [""]
 
-    # ── Comments grouped by file ──────────────────────────────────────────────
+    # ── Comments grouped by file (open by default) ───────────────────────────
     if main_findings:
         lines += [f"**Comments ({len(main_findings)})**", ""]
         by_file: dict[str, list[dict[str, Any]]] = {}
@@ -206,26 +206,37 @@ def _render_review_body(
             n = len(file_findings)
             lines += [
                 "<details open>",
-                f"<summary>&bull; <code>{file_path}</code>"
-                f" &nbsp; <em>{n} issue{'s' if n != 1 else ''}</em></summary>",
+                f"<summary><code>{file_path}</code>"
+                f" &mdash; <em>{n} issue{'s' if n != 1 else ''}</em></summary>",
                 "",
             ]
-            for i, f in enumerate(file_findings):
+            for f in file_findings:
                 lines += _render_comment(f)
-                if i < len(file_findings) - 1:
-                    lines += ["---", ""]
             lines += ["</details>", ""]
 
-    # ── Low-confidence — collapsed by default ─────────────────────────────────
+    # ── Low-confidence — tree structure, collapsed by default ─────────────────
     if low_findings:
+        by_file_low: dict[str, list[dict[str, Any]]] = {}
+        for f in low_findings:
+            by_file_low.setdefault(f.get("path", "—"), []).append(f)
+
         lines += [
             "<details>",
-            f"<summary>&bull; Low confidence comments &nbsp;"
+            f"<summary>Low confidence comments &mdash; "
             f"<em>{len(low_findings)} suppressed</em></summary>",
             "",
         ]
-        for f in low_findings:
-            lines += _render_low_confidence(f)
+        for file_path, file_findings in by_file_low.items():
+            n = len(file_findings)
+            lines += [
+                "<details>",
+                f"<summary>&nbsp;&nbsp;&nbsp;&nbsp;<code>{file_path}</code>"
+                f" &mdash; <em>{n} issue{'s' if n != 1 else ''}</em></summary>",
+                "",
+            ]
+            for f in file_findings:
+                lines += _render_low_confidence(f)
+            lines += ["</details>", ""]
         lines += ["</details>", ""]
 
     # ── Footer ────────────────────────────────────────────────────────────────
@@ -275,76 +286,77 @@ def _table_cell(path: str, status: str, file_findings: list[dict[str, Any]]) -> 
 
 
 def _render_comment(f: dict[str, Any]) -> list[str]:
-    """Render a single CRITICAL/HIGH/MEDIUM finding."""
+    """Render a single CRITICAL/HIGH/MEDIUM finding.
+
+    Structure (parent-child):
+      <details open>  ← comment summary as the clickable header
+        brief overview
+        <details>     ← suggested fix nested inside
+    """
     sev        = f.get("severity", "INFO")
     cat        = f.get("category", "")
     msg        = f.get("message", "")
-    path       = f.get("path", "")
     line_no    = f.get("line", "")
     suggestion = f.get("suggestion", "")
     impact     = float(f.get("impact", 0))
     is_det     = f.get("deterministic", False)
 
-    loc = f"`{path}` line {line_no}" if line_no else (f"`{path}`" if path else "")
+    # First sentence only as the visible summary header
+    brief = msg.split(".")[0].strip() + "." if "." in msg else msg[:100]
+    loc_prefix = f"line {line_no} &mdash; " if line_no else ""
 
     meta: list[str] = []
     if is_det:
-        meta.append("🔒 confirmed by static analysis")
+        meta.append("🔒 static")
     if impact >= 1:
-        meta.append(f"⚡ blast radius {impact:.1f}/5")
+        meta.append(f"⚡ {impact:.1f}/5")
+    meta_str = f" &nbsp; <em>{' &nbsp; '.join(meta)}</em>" if meta else ""
 
     lines = [
-        f"**{loc}** &nbsp; *{sev.lower()}* &nbsp; `{cat}`",
+        "<details open>",
+        f"<summary>{loc_prefix}<em>{sev.lower()}</em> &nbsp; <code>{cat}</code>{meta_str}"
+        f" &mdash; {brief}</summary>",
         "",
         msg,
+        "",
     ]
-    if meta:
-        lines += ["", f"*{' &nbsp;·&nbsp; '.join(meta)}*"]
 
     if suggestion:
-        # Indented child details inside the parent file details
         lines += [
-            "",
             "<details>",
-            "<summary>&nbsp;&nbsp;&nbsp;&bull; Suggested fix</summary>",
+            "<summary>&nbsp;&nbsp;&nbsp;&nbsp;Suggested fix</summary>",
             "",
             f"```\n{suggestion}\n```",
             "",
             "</details>",
+            "",
         ]
 
-    lines.append("")
+    lines += ["</details>", ""]
     return lines
 
 
 def _render_low_confidence(f: dict[str, Any]) -> list[str]:
-    """Render a LOW/INFO finding inside the collapsed low-confidence section."""
-    sev        = f.get("severity", "INFO")
-    cat        = f.get("category", "")
-    msg        = f.get("message", "")
-    path       = f.get("path", "")
-    line_no    = f.get("line", "")
-    suggestion = f.get("suggestion", "")
+    """Render a LOW/INFO finding — brief, no suggested fix (kept out of review comment)."""
+    sev     = f.get("severity", "INFO")
+    cat     = f.get("category", "")
+    msg     = f.get("message", "")
+    line_no = f.get("line", "")
 
-    loc = f"`{path}` line {line_no}" if line_no else (f"`{path}`" if path else "")
+    brief = msg.split(".")[0].strip() + "." if "." in msg else msg[:100]
+    loc_prefix = f"line {line_no} &mdash; " if line_no else ""
 
     lines = [
-        f"**{loc}** &nbsp; *{sev.lower()}* &nbsp; `{cat}`",
+        "<details>",
+        f"<summary>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"
+        f"{loc_prefix}<em>{sev.lower()}</em> &nbsp; <code>{cat}</code>"
+        f" &mdash; {brief}</summary>",
         "",
         msg,
         "",
+        "</details>",
+        "",
     ]
-    if suggestion:
-        lines += [
-            "<details>",
-            "<summary>&nbsp;&nbsp;&nbsp;&bull; Suggested fix</summary>",
-            "",
-            f"```\n{suggestion}\n```",
-            "",
-            "</details>",
-            "",
-        ]
-    lines += ["---", ""]
     return lines
 
 
@@ -363,19 +375,31 @@ def _count_by_severity(findings: list[dict[str, Any]]) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 def _build_inline_comments(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Build inline review comments.
+
+    Suggested fixes are only included for HIGH/CRITICAL/MEDIUM findings.
+    LOW/INFO findings get a brief one-liner only — no fix suggestions inline.
+    """
     comments = []
     for f in findings:
         path = f.get("path")
         line = f.get("line")
         if not path or not line:
             continue
-        sev = f.get("severity", "?")
+        sev = f.get("severity", "INFO").upper()
         cat = f.get("category", "")
         msg = f.get("message", "")
-        suggestion = f.get("suggestion", "")
-        body = f"**{sev}** · {cat}\n\n{msg}"
-        if suggestion:
-            body += f"\n\n**Suggested fix:**\n```\n{suggestion}\n```"
+        # First sentence as brief overview
+        brief = msg.split(".")[0].strip() + "." if "." in msg else msg
+
+        body = f"*{sev.lower()}* &nbsp; `{cat}`\n\n{brief}"
+
+        # Only attach suggested fix for HIGH/CRITICAL/MEDIUM inline
+        if sev in ("CRITICAL", "HIGH", "MEDIUM"):
+            suggestion = f.get("suggestion", "")
+            if suggestion:
+                body += f"\n\n**Suggested fix:**\n```\n{suggestion}\n```"
+
         comments.append({"path": path, "line": int(line), "side": "RIGHT", "body": body})
     return comments
 

@@ -45,13 +45,13 @@ Your goal is to produce a thorough, actionable, and precise review of a GitHub P
 5. Call `calculate_risk_score` with the impact-annotated findings list to get the
    risk score (0–100) and bucket (LOW/MEDIUM/HIGH/BLOCKING).
 
-6. Write a concise markdown summary (3-5 sentences) covering:
-   - What the PR does
-   - Key concerns with impact context (e.g. "changes to X affect N callers")
-   - Verdict
+6. Write a concise 2-3 sentence walkthrough covering:
+   - What the PR does (one sentence)
+   - Any key concerns with impact context (e.g. "changes to X affect N callers")
+   Keep it factual and brief — it appears as the "Walkthrough" section of the review.
 
 7. Call `post_github_review` with owner, repo, pr_number, head_sha, risk_bucket,
-   risk_score, summary, and the impact-annotated findings list.
+   risk_score, summary, findings (impact-annotated), and patches (from step 1).
    Set dry_run=True if instructed.
 
 ## Rules

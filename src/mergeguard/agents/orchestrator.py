@@ -45,13 +45,19 @@ Your goal is to produce a thorough, actionable, and precise review of a GitHub P
 5. Call `calculate_risk_score` with the impact-annotated findings list to get the
    risk score (0–100) and bucket (LOW/MEDIUM/HIGH/BLOCKING).
 
-6. Write a concise 2-3 sentence walkthrough covering:
-   - What the PR does (one sentence)
-   - Any key concerns with impact context (e.g. "changes to X affect N callers")
-   Keep it factual and brief — it appears as the "Walkthrough" section of the review.
+6. Write two things:
+   a. A concise 2-3 sentence `summary` (walkthrough): what the PR does, any key concerns.
+   b. A `file_summaries` list — one plain-English sentence per changed file describing
+      what that specific file does in this PR. Format: [{path, description}, ...].
+      Examples of good descriptions:
+        - "Introduces a TTL-based in-memory cache with `get()`, `set()`, and `invalidate()` operations, supporting per-namespace key isolation."
+        - "Adds a `GET /metrics` endpoint that returns runtime cache statistics and vector store document counts."
+        - "Defines `CacheStats` and `MetricsResponse` Pydantic models for the metrics response schema."
+      Keep each description to one sentence. Use backticks for function/class/endpoint names.
 
 7. Call `post_github_review` with owner, repo, pr_number, head_sha, risk_bucket,
-   risk_score, summary, findings (impact-annotated), and patches (from step 1).
+   risk_score, summary, findings (impact-annotated), patches (from step 1),
+   and file_summaries (from step 6).
    Set dry_run=True if instructed.
 
 ## Rules

@@ -2,7 +2,7 @@
 
 > AI PR Code Review Agent — powered by AWS Strands SDK + Amazon Bedrock
 
-MergeGuard autonomously reviews GitHub Pull Requests: it fetches the diff, parses ASTs, builds call/dependency graphs, runs specialist AI agents (Code Quality, Security, Regression, Architecture), scores risk 0–100, and posts a structured review comment directly on the PR.
+MergeGuard autonomously reviews GitHub Pull Requests: it fetches the diff, parses ASTs, builds call/dependency graphs, runs specialist AI agents (Code Quality, Security, Regression, Architecture), scores risk 0–100, and posts a structured review comment directly on the PR — all inside AWS, with no third-party AI services seeing your code.
 
 ---
 
@@ -10,72 +10,99 @@ MergeGuard autonomously reviews GitHub Pull Requests: it fetches the diff, parse
 
 ```
 GitHub PR Event
-    → GitHub Action / Lambda webhook
+    → GitHub Actions workflow / AWS Lambda webhook
     → Diff Processor (unidiff)
     → Code Intelligence Layer (Tree-sitter AST + call/dep graphs)
-    → Change Classifier (signature | logic | refactor | config | test)
+    → Change Classifier (signature | logic | refactor | config | test | docs)
+    → Impact Analyzer (BFS blast-radius on call graph)
     → Strands Orchestrator Agent
         ├── Code Quality Agent
         ├── Security Agent
-        ├── Regression Agent
-        └── Architecture Agent
-    → Risk Scorer (0–100, bucket: LOW/MEDIUM/HIGH/BLOCKING)
-    → GitHub Review Poster (inline comments + summary + Check Run)
+        ├── Regression Agent  ← deterministic pre-checks + LLM
+        └── Architecture Agent  ← import diff extraction
+    → Risk Scorer (0–100, weighted dimensions)
+    → GitHub Review Poster
+        ├── Summary comment (Copilot-style: overview + changes + reviewed table + comments)
+        ├── Inline comments per finding (HIGH/MEDIUM with fix suggestions)
+        └── Check Run (branch protection gate)
 ```
 
 ---
 
 ## Quick Start
 
-### Local Development
+### Local
 
 ```bash
-# Python 3.12 required (tree-sitter-languages constraint)
+# Python 3.12 required
 python3.12 -m venv .venv
-pip install uv
-uv pip install -e ".[dev]"
+pip install uv && uv pip install -e ".[dev]"
 
-# Set credentials
 cp .env.example .env
-# edit .env with GITHUB_TOKEN + AWS credentials
+# fill in GITHUB_TOKEN + AWS credentials (see .env.example)
 
-# Review a PR
+# smoke test Bedrock connectivity
+mergeguard smoke-test
+
+# review a PR (dry run — prints without posting)
 mergeguard review --pr owner/repo#123 --dry-run
 
-# Run tests
-pytest tests/unit/
+# review and post live
+mergeguard review --pr https://github.com/owner/repo/pull/5
 ```
 
-### GitHub Action
+### GitHub Actions
 
-Add to `.github/workflows/review.yml`:
+Add `.github/workflows/mergeguard-review.yml` to any repo:
 
 ```yaml
+name: MergeGuard AI Review
+
 on:
   pull_request:
-    types: [opened, synchronize, review_requested]
+    types: [opened, synchronize, reopened]
 
 jobs:
-  ai-review:
+  review:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
-      id-token: write  # for OIDC Bedrock auth
+      checks: write
     steps:
       - uses: actions/checkout@v4
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install uv && uv pip install --system "mergeguard @ git+https://github.com/Vjc5h3nt/MergeGaurd.git@main"
+      - name: Run MergeGuard Review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+          BEDROCK_MODEL_ID: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+        run: mergeguard review --pr "${{ github.event.pull_request.html_url }}"
+```
+
+**Required GitHub secrets:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (or configure OIDC for permanent credentials — see below).
+
+### AWS OIDC (permanent credentials — recommended for production)
+
+Replace the static key secrets with an OIDC role:
+
+```yaml
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
           aws-region: us-east-1
-      - uses: ./  # or: your-org/mergeguard@v1
-        with:
-          risk-threshold-block: "75"
 ```
+
+The role needs `bedrock:InvokeModel` on the Claude model ARN.
 
 ### Per-Repo Configuration
 
-Create `.github/ai-reviewer.yml`:
+Create `.github/ai-reviewer.yml` in any reviewed repo to customise behaviour:
 
 ```yaml
 trigger:
@@ -87,6 +114,7 @@ analysis:
   risk_threshold_warn: 50
   check_security: true
   check_test_coverage: true
+  check_breaking_changes: true
 
 output:
   post_inline_comments: true
@@ -99,98 +127,127 @@ output:
 
 ```
 src/mergeguard/
-├── cli.py                  # mergeguard review / smoke-test
-├── config.py               # env + .github/ai-reviewer.yml loader
-├── lambda_handler.py       # AWS Lambda entry point
+├── cli.py                    # mergeguard review / smoke-test
+├── config.py                 # env + .github/ai-reviewer.yml loader
+├── lambda_handler.py         # AWS Lambda webhook entry point
 ├── diff/
-│   ├── parser.py           # unidiff → FilePatch objects
-│   └── hunk_mapper.py      # hunk → line ranges
+│   ├── parser.py             # unidiff → FilePatch objects
+│   └── hunk_mapper.py        # hunk → pre/post line ranges
 ├── intelligence/
-│   ├── tree_sitter_loader.py   # Language registry (Py/TS/JS/Go/Java)
-│   ├── symbol_extractor.py     # AST → Symbol objects
-│   ├── call_graph_builder.py   # intra-file call edges
-│   ├── dependency_graph.py     # import edges
-│   ├── change_classifier.py    # signature|logic|refactor|config
-│   └── cache.py                # (repo, sha) → symbol graph cache
+│   ├── tree_sitter_loader.py # Language registry (Py/TS/JS/Go/Java)
+│   ├── symbol_extractor.py   # AST → Symbol objects with signature hashes
+│   ├── call_graph_builder.py # intra-file call edges + cross-file via import map
+│   ├── dependency_graph.py   # import edges per language
+│   ├── change_classifier.py  # signature|logic|refactor|config|test|docs
+│   └── cache.py              # (repo, sha) → symbol graph file-system cache
 ├── scoring/
-│   ├── severity.py         # 0–5 severity model
-│   ├── impact.py           # BFS blast-radius scorer
-│   └── pr_score.py         # PR-level risk aggregation
+│   ├── severity.py           # CRITICAL/HIGH/MEDIUM/LOW/INFO model
+│   ├── impact.py             # BFS blast-radius scorer (0–5 scale)
+│   └── pr_score.py           # PR-level weighted risk aggregation + markdown table
 ├── agents/
-│   ├── orchestrator.py     # Strands Orchestrator Agent
-│   ├── code_quality.py     # lint, complexity, dead code
-│   ├── security.py         # OWASP, secrets, CVEs
-│   ├── regression.py       # behavioral diff, test coverage delta
-│   └── architecture.py     # layer boundaries, circular deps
-├── tools/                  # Strands @tool functions
-│   ├── fetch_pr_diff.py
-│   ├── ast_query.py
-│   ├── callgraph_query.py
-│   ├── dep_lookup.py
-│   ├── risk_scorer.py
-│   └── github_poster.py
+│   ├── orchestrator.py       # Strands Orchestrator — dispatches specialists
+│   ├── code_quality.py       # lint, complexity, dead code, duplication
+│   ├── security.py           # OWASP, secrets, dependency vulns
+│   ├── regression.py         # deterministic pre-checks + LLM behavioral analysis
+│   └── architecture.py       # layer violations, circular deps, import diff
+├── tools/                    # Strands @tool functions
+│   ├── fetch_pr_diff.py      # GitHub PR diff + metadata
+│   ├── impact_analyzer.py    # BFS blast-radius annotation on findings
+│   ├── ast_query.py          # symbol graph queries
+│   ├── callgraph_query.py    # call graph BFS lookup
+│   ├── dep_lookup.py         # dependency graph + circular dep detection
+│   ├── risk_scorer.py        # weighted 0–100 risk score
+│   └── github_poster.py      # review comment + inline comments + Check Run
 ├── integrations/
-│   ├── github.py           # REST client with ETag caching
-│   └── bedrock.py          # BedrockModel factory
+│   ├── github.py             # REST client with ETag caching + rate-limit handling
+│   └── bedrock.py            # Strands BedrockModel factory
 └── telemetry/
-    └── tracing.py          # OTel / ReviewTrace
+    └── tracing.py            # OTel tracing via Strands hooks
 ```
+
+---
+
+## Review Output Format
+
+The review comment follows a **Copilot-inspired structure** with MergeGuard's own additions:
+
+```
+## 🟢 MergeGuard · LOW · 12/100
+
+**Pull request overview**
+Brief walkthrough of what the PR does and key concerns.
+
+**Changes**
+- Introduces a TTL-based in-memory cache with `get()`, `set()`, and `invalidate()`.
+- Adds a `GET /metrics` endpoint returning cache stats and vector store counts.
+
+**Reviewed changes**
+MergeGuard reviewed 4 files and generated 9 comments. Looks good — low risk.
+
+| File                   | Description                                          |
+| :---                   | :---                                                 |
+| `backend/app/cache.py` | 7 issues · high · `quality/thread-safety`, `security/...` |
+
+**Comments (9)**
+  backend/app/cache.py — 7 issues   [expandable]
+    line 5 · high · quality/thread-safety — Global `_store` is not thread-safe.
+      🔒 confirmed by static analysis · ⚡ blast radius 1.2/5
+      [Suggested fix — collapsible]
+
+  Low confidence comments — 10 suppressed   [collapsed]
+    backend/app/cache.py — 3 issues   [collapsed]
+      line 18 · low · quality/error-handling
+```
+
+**MergeGuard-specific elements:**
+- `🔒` — finding confirmed by deterministic static analysis (not LLM guess)
+- `⚡ blast radius N/5` — how many callers are transitively affected
+- HIGH/MEDIUM shown expanded; LOW/INFO collapsed and grouped by file
+- Inline comments on code lines: brief one-liner only; fix suggestions for HIGH/MEDIUM only
 
 ---
 
 ## Risk Score
 
-| Dimension | Weight | Max |
-|-----------|--------|-----|
-| Security Findings | 30% | 30 |
-| Code Complexity | 20% | 20 |
-| Test Coverage Delta | 20% | 20 |
-| Architectural Violations | 15% | 15 |
-| Breaking Change Risk | 15% | 15 |
+| Dimension | Weight |
+|-----------|--------|
+| Security | 30% |
+| Code Complexity | 20% |
+| Test Coverage | 20% |
+| Architecture | 15% |
+| Breaking Changes | 15% |
 
-| Bucket | Score Range | GitHub Action |
-|--------|------------|---------------|
-| LOW | 0–24 | Approve |
+| Bucket | Score | Review event |
+|--------|-------|-------------|
+| LOW | 0–24 | Comment |
 | MEDIUM | 25–49 | Comment |
-| HIGH | 50–74 | Request Changes |
-| BLOCKING | 75–100 | Block merge (Check Run fails) |
-
----
-
-## Sample Review Output
-
-```
-## 🟠 AI Code Review — Risk Score: 62/100
-
-### Summary
-This PR modifies the payment processing module and adds a new webhook handler.
-3 issues found: 1 HIGH, 1 MEDIUM, 1 LOW.
-
-### Findings
-
-| Severity | Category | File | Message |
-|----------|----------|------|---------|
-| **HIGH** | security/sqli | `src/payment/processor.py:L142` | Raw string interpolation in SQL query |
-| **MEDIUM** | test/coverage | `src/webhook/handler.py` | New `WebhookHandler.process()` has 0 test coverage |
-| **LOW** | quality/complexity | `src/payment/validator.py:L23` | Cyclomatic complexity: 4 → 11 |
-
-### Verdict: 🟠 CHANGES REQUESTED — Resolve HIGH severity issues before merging.
-```
+| HIGH | 50–74 | Request changes |
+| BLOCKING | 75–100 | Request changes + Check Run fails |
 
 ---
 
 ## Phased Roadmap
 
-- **Phase 0** ✅ Bootstrap — scaffold, deps, CLI, CI
-- **Phase 1** ✅ Diff MVP — GitHub I/O, Strands agents, Action/Dockerfile
-- **Phase 2** ✅ Code Intelligence — Tree-sitter AST, call/dep graphs, classifier
-- **Phase 3** 🔜 Impact + Regression — BFS blast radius, regression agent, architecture agent
-- **Phase 4** 🔜 Scale + Learning — OTel tracing, feedback loop, few-shot retrieval
+- **Phase 0** ✅ Bootstrap — scaffold, deps, CLI, CI workflow
+- **Phase 1** ✅ Diff MVP — GitHub client, Strands orchestrator + 4 specialist agents, GitHub poster, Action/Dockerfile, Lambda handler
+- **Phase 2** ✅ Code Intelligence — Tree-sitter AST (Py/TS/JS/Go/Java), symbol extractor, call graph, dependency graph, change classifier, graph cache
+- **Phase 3** ✅ Impact + Regression — BFS blast-radius wired into orchestrator, deterministic regression pre-checks (removed symbols, signature changes, renames), architecture agent with import diff extraction, richer review rendering
+- **Phase 4** 🔜 Scale + Learning — OTel tracing, 👍/👎 feedback capture, few-shot retrieval, model cost routing (Haiku for triage)
 
 ---
 
 ## Requirements
 
-- Python 3.12 (tree-sitter-languages constraint)
-- AWS credentials with Bedrock access (`anthropic.claude-sonnet-4-5-v1:0`)
-- GitHub token with `pull_requests: write` and `checks: write`
+- Python 3.12 (`tree-sitter-languages` has no 3.13+ wheel)
+- AWS credentials with Bedrock access — model: `us.anthropic.claude-sonnet-4-5-20250929-v1:0`
+- GitHub token: `pull_requests: write`, `contents: read`, `checks: write`
+
+---
+
+## Live Deployment
+
+| Resource | URL |
+|----------|-----|
+| MergeGuard source | https://github.com/Vjc5h3nt/MergeGaurd |
+| Test repo (reviews active) | https://github.com/Vjc5h3nt/IT-Query-Agent-RAG |
+| Active test PR | https://github.com/Vjc5h3nt/IT-Query-Agent-RAG/pull/1 |

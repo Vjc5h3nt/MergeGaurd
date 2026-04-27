@@ -14,6 +14,7 @@ from mergeguard.agents.security import review_security
 from mergeguard.integrations.bedrock import build_model
 from mergeguard.tools.fetch_pr_diff import fetch_pr_diff
 from mergeguard.tools.github_poster import post_github_review
+from mergeguard.tools.impact_analyzer import analyze_impact
 from mergeguard.tools.risk_scorer import calculate_risk_score
 
 log = logging.getLogger(__name__)
@@ -26,22 +27,42 @@ Your goal is to produce a thorough, actionable, and precise review of a GitHub P
 ## Workflow
 
 1. Call `fetch_pr_diff` with the owner, repo, and pr_number to retrieve the PR diff and metadata.
-2. Based on the changed files and diff size, decide which specialist agents to invoke:
+
+2. Based on the changed files and diff size, dispatch specialist agents:
    - Always invoke `review_code_quality` and `review_security`.
    - Invoke `detect_regressions` if any existing functions/classes are modified (not just new files).
-   - Invoke `review_architecture` if the diff adds new modules, changes imports, or restructures packages.
-3. Collect all `findings` arrays from specialist results.
-4. Call `calculate_risk_score` with the combined findings list to get the risk score and bucket.
-5. Write a concise markdown summary (3-5 sentences) covering: what the PR does, key concerns, and verdict.
-6. Call `post_github_review` with the owner, repo, pr_number, head_sha, risk_bucket, risk_score,
-   summary, and findings. Set dry_run=True if instructed.
+     This agent runs deterministic pre-checks (removed symbols, signature changes) BEFORE LLM reasoning
+     — always invoke it when there are modified files, not just added ones.
+   - Invoke `review_architecture` if the diff adds new imports, changes module structure,
+     or restructures packages.
+
+3. Collect all `findings` arrays from specialist results into a single flat list.
+
+4. Call `analyze_impact` with the combined findings list and the patches from step 1.
+   This annotates each finding with a blast-radius impact score (0.0–5.0) based on
+   how many callers are transitively affected by each changed symbol.
+
+5. Call `calculate_risk_score` with the impact-annotated findings list to get the
+   risk score (0–100) and bucket (LOW/MEDIUM/HIGH/BLOCKING).
+
+6. Write a concise markdown summary (3-5 sentences) covering:
+   - What the PR does
+   - Key concerns with impact context (e.g. "changes to X affect N callers")
+   - Verdict
+
+7. Call `post_github_review` with owner, repo, pr_number, head_sha, risk_bucket,
+   risk_score, summary, and the impact-annotated findings list.
+   Set dry_run=True if instructed.
 
 ## Rules
 - Be precise. Only report findings with clear evidence from the diff.
 - Never hallucinate file paths or line numbers.
-- Format suggestions as runnable code snippets.
+- Format suggestions as runnable code snippets where possible.
+- Deterministic findings from the regression agent (marked 'deterministic': true) are facts —
+  do not remove or downgrade them in your summary.
 - If findings list is empty, give an APPROVED review with a positive summary.
-- Prioritize BLOCKING and HIGH severity issues prominently in the summary.
+- Prominently surface BLOCKING and HIGH severity issues in the summary.
+- Always run `analyze_impact` before `calculate_risk_score` — impact scores change the final risk bucket.
 """
 
 
@@ -57,6 +78,7 @@ def build_orchestrator() -> Agent:
             review_security,
             detect_regressions,
             review_architecture,
+            analyze_impact,
             calculate_risk_score,
             post_github_review,
         ],
@@ -69,10 +91,7 @@ def review_pull_request(
     pr_number: int,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Convenience function: run a full review and return structured results.
-
-    This is the main entry point for Lambda/ECS invocations.
-    """
+    """Convenience function: run a full review and return structured results."""
     orchestrator = build_orchestrator()
 
     prompt = (

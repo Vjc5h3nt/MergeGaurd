@@ -55,6 +55,7 @@ def post_github_review(
     summary: str,
     findings: list[dict[str, Any]],
     patches: list[dict[str, Any]] | None = None,
+    file_summaries: list[dict[str, Any]] | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
     """Post a structured code review comment to a GitHub Pull Request.
@@ -68,13 +69,16 @@ def post_github_review(
         risk_score: Numeric risk score 0–100.
         summary: 2-3 sentence walkthrough of what the PR does and key concerns.
         findings: List of finding dicts (severity, category, message, path, line, suggestion).
-        patches: Optional serialized FilePatch list from fetch_pr_diff (used for Changes table).
+        patches: Optional serialized FilePatch list from fetch_pr_diff.
+        file_summaries: Optional list of {path, description} dicts with plain-English
+            per-file change descriptions (e.g. "Introduces TTL-based cache with namespace support.").
+            When provided, these replace the auto-generated Changes bullets.
         dry_run: If True, format and return the review body without posting.
 
     Returns:
         Dict with 'posted' bool, 'review_id' (if posted), 'body' (markdown).
     """
-    body = _render_review_body(risk_score, risk_bucket, summary, findings, patches or [])
+    body = _render_review_body(risk_score, risk_bucket, summary, findings, patches or [], file_summaries or [])
 
     if dry_run:
         log.info("Dry run — review body formatted but not posted.")
@@ -127,19 +131,21 @@ def _render_review_body(
     summary: str,
     findings: list[dict[str, Any]],
     patches: list[dict[str, Any]],
+    file_summaries: list[dict[str, Any]],
 ) -> str:
-    emoji = _BUCKET_EMOJI.get(risk_bucket, "⚪")
+    emoji   = _BUCKET_EMOJI.get(risk_bucket, "⚪")
     n_files = len(patches)
 
     sorted_findings = sorted(
         findings,
         key=lambda f: (_SEV_ORDER.get(f.get("severity", "INFO"), 5), -float(f.get("impact", 0))),
     )
-    main_findings    = [f for f in sorted_findings if f.get("severity") in ("CRITICAL", "HIGH", "MEDIUM")]
-    low_findings     = [f for f in sorted_findings if f.get("severity") in ("LOW", "INFO")]
-    n_main           = len(main_findings)
-    n_low            = len(low_findings)
-    n_total          = len(sorted_findings)
+    main_findings = [f for f in sorted_findings if f.get("severity") in ("CRITICAL", "HIGH", "MEDIUM")]
+    low_findings  = [f for f in sorted_findings if f.get("severity") in ("LOW", "INFO")]
+    n_total       = len(sorted_findings)
+
+    # Build a path→description lookup from file_summaries
+    fs_map: dict[str, str] = {s["path"]: s["description"] for s in file_summaries if "path" in s and "description" in s}
 
     lines: list[str] = []
 
@@ -150,74 +156,72 @@ def _render_review_body(
     ]
 
     # ── Pull request overview ─────────────────────────────────────────────────
-    lines += [
-        "**Pull request overview**",
-        "",
-        summary,
-        "",
-    ]
+    lines += ["**Pull request overview**", "", summary, ""]
 
-    # ── Changes bullet list ───────────────────────────────────────────────────
+    # ── Changes — plain-English bullet per file ───────────────────────────────
     if patches:
         lines += ["**Changes**", ""]
         for p in patches:
-            path = p.get("path", "")
-            desc = _patch_description(p, sorted_findings)
-            lines.append(f"- `{path}` — {desc}")
+            path   = p.get("path", "")
+            status = p.get("status", "modified")
+            if path in fs_map:
+                desc = fs_map[path]
+            else:
+                desc = _infer_change_description(path, status, sorted_findings)
+            lines.append(f"- {desc}")
         lines += [""]
 
     # ── Reviewed changes table ────────────────────────────────────────────────
     verdict_line = _VERDICT.get(risk_bucket, "Review complete.")
-    reviewed_str = (
+    lines += [
+        "**Reviewed changes**",
+        "",
         f"MergeGuard reviewed {n_files} file{'s' if n_files != 1 else ''} "
         f"and generated {n_total} comment{'s' if n_total != 1 else ''}. "
-        f"{verdict_line}"
-    )
-    lines += ["**Reviewed changes**", "", reviewed_str, ""]
+        f"{verdict_line}",
+        "",
+    ]
 
     if patches:
-        lines += ["| File | Description |", "|------|-------------|"]
+        # Two even columns — File on left, Description on right
+        lines += [
+            "| File | Description |",
+            "| :--- | :--- |",
+        ]
         for p in patches:
-            path     = p.get("path", "")
-            added    = p.get("additions", len(p.get("added_lines", [])))
-            removed  = p.get("deletions",  len(p.get("removed_lines", [])))
-            status   = p.get("status", "modified")
-            diff_str = {"added": "New file", "removed": "Deleted", "renamed": "Renamed"}.get(
-                status, f"+{added} −{removed}"
-            )
+            path        = p.get("path", "")
+            status      = p.get("status", "modified")
             file_issues = [f for f in sorted_findings if f.get("path") == path]
-            n_fi = len(file_issues)
-            issue_str = f" · {n_fi} issue{'s' if n_fi != 1 else ''}" if file_issues else ""
-            desc = _file_table_description(p, file_issues)
-            lines.append(f"| `{path}` | {diff_str}{issue_str} — {desc} |")
+            lines.append(f"| `{path}` | {_table_cell(path, status, file_issues)} |")
         lines += [""]
 
-    # ── Main comments grouped by file ────────────────────────────────────────
+    # ── Comments grouped by file ──────────────────────────────────────────────
     if main_findings:
-        lines += [f"**Comments ({n_main})**", ""]
+        lines += [f"**Comments ({len(main_findings)})**", ""]
         by_file: dict[str, list[dict[str, Any]]] = {}
         for f in main_findings:
             by_file.setdefault(f.get("path", "—"), []).append(f)
 
         for file_path, file_findings in by_file.items():
+            n = len(file_findings)
             lines += [
-                f"<details open>",
-                f"<summary>&#9660; <code>{file_path}</code> &nbsp; "
-                f"<em>{len(file_findings)} issue{'s' if len(file_findings) != 1 else ''}</em></summary>",
+                "<details open>",
+                f"<summary>&bull; <code>{file_path}</code>"
+                f" &nbsp; <em>{n} issue{'s' if n != 1 else ''}</em></summary>",
                 "",
             ]
             for i, f in enumerate(file_findings):
                 lines += _render_comment(f)
                 if i < len(file_findings) - 1:
-                    lines.append("---")
-                    lines.append("")
+                    lines += ["---", ""]
             lines += ["</details>", ""]
 
-    # ── Low-confidence section — collapsed by default ─────────────────────────
+    # ── Low-confidence — collapsed by default ─────────────────────────────────
     if low_findings:
         lines += [
-            f"<details>",
-            f"<summary>&#9658; Low confidence comments ({n_low} suppressed)</summary>",
+            "<details>",
+            f"<summary>&bull; Low confidence comments &nbsp;"
+            f"<em>{len(low_findings)} suppressed</em></summary>",
             "",
         ]
         for f in low_findings:
@@ -235,73 +239,74 @@ def _render_review_body(
     return "\n".join(lines)
 
 
-def _patch_description(patch: dict[str, Any], findings: list[dict[str, Any]]) -> str:
-    """One-line Changes bullet description."""
-    path   = patch.get("path", "")
-    status = patch.get("status", "modified")
-    added  = patch.get("additions", len(patch.get("added_lines", [])))
-    removed = patch.get("deletions", len(patch.get("removed_lines", [])))
-
+def _infer_change_description(path: str, status: str, findings: list[dict[str, Any]]) -> str:
+    """Fallback plain-English description when no file_summary is provided."""
+    name = path.split("/")[-1]
     if status == "added":
-        return f"New file (+{added} lines)."
+        return f"Introduces `{name}`."
     if status == "removed":
-        return f"Deleted (−{removed} lines)."
+        return f"Removes `{name}`."
     if status == "renamed":
-        return "Renamed."
-
+        return f"Renames `{name}`."
     file_findings = [f for f in findings if f.get("path") == path]
     if file_findings:
-        cats = list(dict.fromkeys(f.get("category", "").split("/")[0] for f in file_findings))
-        return f"Modified (+{added} −{removed}). Areas flagged: {', '.join(cats)}."
-    return f"Modified (+{added} −{removed} lines)."
+        cats = list(dict.fromkeys(
+            f.get("category", "").split("/")[-1] for f in file_findings
+        ))
+        return f"Updates `{name}`. Areas reviewed: {', '.join(cats[:3])}."
+    return f"Updates `{name}`."
 
 
-def _file_table_description(patch: dict[str, Any], file_findings: list[dict[str, Any]]) -> str:
-    """Short description for the Reviewed changes table cell."""
+def _table_cell(path: str, status: str, file_findings: list[dict[str, Any]]) -> str:
+    """Content for the Reviewed changes table description cell."""
+    if status == "removed":
+        return "Deleted."
+    if status == "renamed":
+        return "Renamed."
     if not file_findings:
         return "No issues found."
     sevs = [f.get("severity", "INFO") for f in file_findings]
+    top_sev = next((s for s in ("CRITICAL", "HIGH", "MEDIUM", "LOW") if s in sevs), "INFO")
     cats = list(dict.fromkeys(f.get("category", "") for f in file_findings))
-    top = ", ".join(f"`{c}`" for c in cats[:3])
-    top_sev = next((s for s in ("CRITICAL", "HIGH", "MEDIUM") if s in sevs), sevs[0])
-    return f"Highest severity: *{top_sev.lower()}*. Categories: {top}."
+    top_cats = ", ".join(f"`{c}`" for c in cats[:2])
+    n = len(file_findings)
+    more = f" +{len(cats) - 2} more" if len(cats) > 2 else ""
+    return f"{n} issue{'s' if n != 1 else ''} &nbsp;·&nbsp; *{top_sev.lower()}* &nbsp;·&nbsp; {top_cats}{more}"
 
 
 def _render_comment(f: dict[str, Any]) -> list[str]:
-    """Render a single CRITICAL/HIGH/MEDIUM finding — clean, no alert boxes."""
-    sev      = f.get("severity", "INFO")
-    cat      = f.get("category", "")
-    msg      = f.get("message", "")
-    path     = f.get("path", "")
-    line_no  = f.get("line", "")
+    """Render a single CRITICAL/HIGH/MEDIUM finding."""
+    sev        = f.get("severity", "INFO")
+    cat        = f.get("category", "")
+    msg        = f.get("message", "")
+    path       = f.get("path", "")
+    line_no    = f.get("line", "")
     suggestion = f.get("suggestion", "")
-    impact   = float(f.get("impact", 0))
-    is_det   = f.get("deterministic", False)
+    impact     = float(f.get("impact", 0))
+    is_det     = f.get("deterministic", False)
 
     loc = f"`{path}` line {line_no}" if line_no else (f"`{path}`" if path else "")
 
-    # MergeGuard-specific badges (minimal, only when meaningful)
     meta: list[str] = []
     if is_det:
         meta.append("🔒 confirmed by static analysis")
     if impact >= 1:
         meta.append(f"⚡ blast radius {impact:.1f}/5")
-    meta_str = f"\n\n_{' · '.join(meta)}_" if meta else ""
 
     lines = [
         f"**{loc}** &nbsp; *{sev.lower()}* &nbsp; `{cat}`",
         "",
         msg,
     ]
-
-    if meta_str:
-        lines += [meta_str.strip(), ""]
+    if meta:
+        lines += ["", f"*{' &nbsp;·&nbsp; '.join(meta)}*"]
 
     if suggestion:
+        # Indented child details inside the parent file details
         lines += [
             "",
             "<details>",
-            "<summary>&#9658; Suggested fix</summary>",
+            "<summary>&nbsp;&nbsp;&nbsp;&bull; Suggested fix</summary>",
             "",
             f"```\n{suggestion}\n```",
             "",
@@ -313,12 +318,12 @@ def _render_comment(f: dict[str, Any]) -> list[str]:
 
 
 def _render_low_confidence(f: dict[str, Any]) -> list[str]:
-    """Render a LOW/INFO finding — compact, inside the collapsed section."""
-    sev     = f.get("severity", "INFO")
-    cat     = f.get("category", "")
-    msg     = f.get("message", "")
-    path    = f.get("path", "")
-    line_no = f.get("line", "")
+    """Render a LOW/INFO finding inside the collapsed low-confidence section."""
+    sev        = f.get("severity", "INFO")
+    cat        = f.get("category", "")
+    msg        = f.get("message", "")
+    path       = f.get("path", "")
+    line_no    = f.get("line", "")
     suggestion = f.get("suggestion", "")
 
     loc = f"`{path}` line {line_no}" if line_no else (f"`{path}`" if path else "")
@@ -332,7 +337,7 @@ def _render_low_confidence(f: dict[str, Any]) -> list[str]:
     if suggestion:
         lines += [
             "<details>",
-            "<summary>&#9658; Suggested fix</summary>",
+            "<summary>&nbsp;&nbsp;&nbsp;&bull; Suggested fix</summary>",
             "",
             f"```\n{suggestion}\n```",
             "",

@@ -118,7 +118,7 @@ def post_github_review(
 
 
 # ---------------------------------------------------------------------------
-# Renderer — CodeRabbit-inspired compact layout
+# Renderer — Copilot-style layout with MergeGuard's own touch
 # ---------------------------------------------------------------------------
 
 def _render_review_body(
@@ -129,71 +129,136 @@ def _render_review_body(
     patches: list[dict[str, Any]],
 ) -> str:
     emoji = _BUCKET_EMOJI.get(risk_bucket, "⚪")
-    verdict = _VERDICT.get(risk_bucket, "Review complete.")
+    n_files = len(patches)
+    n_issues = len(findings)
 
-    lines: list[str] = []
-
-    # ── Header ──────────────────────────────────────────────────────────────
-    lines += [
-        f"## {emoji} MergeGuard · `{risk_score}/100` · {risk_bucket}",
-        "",
-        f"> {verdict}",
-        "",
-    ]
-
-    # ── Walkthrough ─────────────────────────────────────────────────────────
-    lines += [
-        "### Walkthrough",
-        "",
-        summary,
-        "",
-    ]
-
-    # ── Changes table (one row per changed file) ─────────────────────────────
-    if patches:
-        lines += ["### Changes", ""]
-        lines += ["| File | Status | +/− |", "|------|--------|-----|"]
-        for p in patches:
-            path = p.get("path", "")
-            status = p.get("status", "modified")
-            added = p.get("additions", len(p.get("added_lines", [])))
-            removed = p.get("deletions", len(p.get("removed_lines", [])))
-            status_icon = {"added": "✨ added", "removed": "🗑 deleted", "renamed": "📝 renamed"}.get(
-                status, "📝 modified"
-            )
-            lines.append(f"| `{path}` | {status_icon} | +{added} −{removed} |")
-        lines += [""]
-
-    # ── Findings ─────────────────────────────────────────────────────────────
     sorted_findings = sorted(
         findings,
         key=lambda f: (_SEV_ORDER.get(f.get("severity", "INFO"), 5), -float(f.get("impact", 0))),
     )
 
-    if sorted_findings:
-        counts = _count_by_severity(sorted_findings)
-        count_str = "  ·  ".join(
-            f"**{v}** {k.lower()}" for k, v in counts.items() if v
-        )
-        lines += ["### Issues", "", f"> {count_str}", ""]
+    # High/medium that need attention (shown prominently)
+    blocking_findings = [f for f in sorted_findings if f.get("severity") in ("CRITICAL", "HIGH", "MEDIUM")]
+    # Low/info shown in suppressed section
+    suppressed_findings = [f for f in sorted_findings if f.get("severity") in ("LOW", "INFO")]
 
-        for f in sorted_findings:
-            lines += _render_finding(f)
-    else:
-        lines += ["### Issues", "", "> ✅ No issues found.", ""]
+    lines: list[str] = []
 
-    # ── Footer ───────────────────────────────────────────────────────────────
+    # ── Header badge ─────────────────────────────────────────────────────────
+    lines += [
+        f"## {emoji} MergeGuard · {risk_bucket} · `{risk_score}/100`",
+        "",
+    ]
+
+    # ── Pull request overview ─────────────────────────────────────────────────
+    lines += [
+        "**Pull request overview**",
+        "",
+        summary,
+        "",
+    ]
+
+    # ── Changes bullet list ───────────────────────────────────────────────────
+    if patches:
+        lines += ["**Changes**", ""]
+        for p in patches:
+            path = p.get("path", "")
+            desc = _patch_description(p, findings)
+            lines.append(f"- `{path}` — {desc}")
+        lines += [""]
+
+    # ── Reviewed changes table ────────────────────────────────────────────────
+    verdict_line = _VERDICT.get(risk_bucket, "Review complete.")
+    reviewed_str = (
+        f"MergeGuard reviewed **{n_files}** file{'s' if n_files != 1 else ''} "
+        f"and generated **{n_issues}** comment{'s' if n_issues != 1 else ''}. "
+        f"{verdict_line}"
+    )
+    lines += ["**Reviewed changes**", "", reviewed_str, ""]
+
+    if patches:
+        lines += ["| File | Description |", "|------|-------------|"]
+        for p in patches:
+            path = p.get("path", "")
+            added = p.get("additions", len(p.get("added_lines", [])))
+            removed = p.get("deletions", len(p.get("removed_lines", [])))
+            status = p.get("status", "modified")
+            status_label = {"added": "New file", "removed": "Deleted", "renamed": "Renamed"}.get(
+                status, f"+{added} −{removed}"
+            )
+            file_findings = [f for f in findings if f.get("path") == path]
+            issue_note = f" · **{len(file_findings)} issue{'s' if len(file_findings) != 1 else ''}**" if file_findings else ""
+            lines.append(f"| `{path}` | {status_label}{issue_note} |")
+        lines += [""]
+
+    # ── Main comments (CRITICAL / HIGH / MEDIUM) ──────────────────────────────
+    if blocking_findings:
+        lines += [f"**Comments ({len(blocking_findings)})**", ""]
+        for f in blocking_findings:
+            lines += _render_comment(f)
+
+    # ── Suppressed low-confidence comments ────────────────────────────────────
+    if suppressed_findings:
+        lines += [
+            f"**Comments suppressed due to low confidence ({len(suppressed_findings)})**",
+            "",
+        ]
+        for f in suppressed_findings:
+            path = f.get("path", "")
+            line_no = f.get("line", "")
+            loc = f"`{path}`" + (f":{line_no}" if line_no else "")
+            cat = f.get("category", "")
+            msg = f.get("message", "")
+            lines += [
+                f"{loc}",
+                "",
+                f"> {msg}",
+                "",
+            ]
+            if suggestion := f.get("suggestion"):
+                lines += [
+                    "<details><summary>Suggested fix</summary>",
+                    "",
+                    f"```\n{suggestion}\n```",
+                    "</details>",
+                    "",
+                ]
+
+    # ── Footer ────────────────────────────────────────────────────────────────
     lines += [
         "---",
         "*[MergeGuard](https://github.com/Vjc5h3nt/MergeGaurd) · "
-        "AWS Strands SDK + Amazon Bedrock*",
+        "AWS Strands SDK + Amazon Bedrock · "
+        "🔒 static analysis · ⚡ blast-radius impact scoring*",
     ]
 
     return "\n".join(lines)
 
 
-def _render_finding(f: dict[str, Any]) -> list[str]:
-    """Render a single finding as a GitHub Alert with optional collapsible fix."""
+def _patch_description(patch: dict[str, Any], findings: list[dict[str, Any]]) -> str:
+    """Generate a one-line description for a changed file."""
+    path = patch.get("path", "")
+    status = patch.get("status", "modified")
+    added = patch.get("additions", len(patch.get("added_lines", [])))
+    removed = patch.get("deletions", len(patch.get("removed_lines", [])))
+
+    if status == "added":
+        return f"New file added (+{added} lines)."
+    if status == "removed":
+        return f"File deleted (−{removed} lines)."
+    if status == "renamed":
+        return f"File renamed."
+
+    # Derive a description from findings about this file
+    file_findings = [f for f in findings if f.get("path") == path]
+    if file_findings:
+        cats = list({f.get("category", "").split("/")[0] for f in file_findings})
+        return f"Modified (+{added} −{removed}). Issues: {', '.join(cats)}."
+    return f"Modified (+{added} −{removed} lines)."
+
+
+def _render_comment(f: dict[str, Any]) -> list[str]:
+    """Render a single HIGH/MEDIUM/CRITICAL finding in Copilot comment style."""
     sev = f.get("severity", "INFO")
     cat = f.get("category", "")
     msg = f.get("message", "")
@@ -203,21 +268,37 @@ def _render_finding(f: dict[str, Any]) -> list[str]:
     impact = float(f.get("impact", 0))
     is_det = f.get("deterministic", False)
 
-    alert = _ALERT_TYPE.get(sev, "NOTE")
-    loc = f"`{path}`" + (f" line {line_no}" if line_no else "") if path else ""
-    badges = ("🔒 " if is_det else "") + ("⚡ " * min(int(impact), 3) if impact >= 1 else "")
-    header = f"**{sev}** · {cat}" + (f" · {loc}" if loc else "")
+    loc = f"`{path}`" + (f":{line_no}" if line_no else "") if path else ""
 
-    lines = [f"> [!{alert}]", f"> {badges}{header}", f">", f"> {msg}"]
+    # MergeGuard badges — our unique touch
+    badges: list[str] = []
+    if is_det:
+        badges.append("🔒 static")
+    if impact >= 3:
+        badges.append(f"⚡⚡ impact {impact:.1f}/5")
+    elif impact >= 1:
+        badges.append(f"⚡ impact {impact:.1f}/5")
+    badge_str = f" · {' · '.join(badges)}" if badges else ""
+
+    alert = _ALERT_TYPE.get(sev, "NOTE")
+    lines = [
+        f"> [!{alert}]",
+        f"> **{sev}** · {cat}{badge_str}",
+        f">",
+        f"> {loc}",
+        f">",
+        f"> {msg}",
+    ]
 
     if suggestion:
         lines += [
             ">",
             "> <details><summary>Suggested fix</summary>",
             ">",
-            f"> ```",
+            "> ```",
             *[f"> {l}" for l in suggestion.splitlines()],
-            f"> ```",
+            "> ```",
+            ">",
             "> </details>",
         ]
 

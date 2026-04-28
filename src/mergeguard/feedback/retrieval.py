@@ -61,19 +61,27 @@ def format_examples_prompt(examples: list[dict[str, Any]]) -> str:
 
 
 def get_examples_block(category_prefix: str, file_ext: str) -> str:
-    """Convenience wrapper: open store, fetch, format, close. Returns empty on any error."""
-    try:
-        from mergeguard.feedback.store import get_db_path, open_db
+    """Convenience wrapper — auto-routes to DynamoDB or SQLite. Returns empty on any error."""
+    import os
 
-        db_path = get_db_path()
-        if not db_path.exists():
-            return ""
-        conn = open_db(db_path)
-        try:
-            examples = fetch_examples(conn, category_prefix, file_ext)
+    try:
+        if os.getenv("MERGEGUARD_STORE_BACKEND") == "dynamodb":
+            from mergeguard.feedback.dynamodb_store import fetch_examples_dynamo
+
+            examples = fetch_examples_dynamo(category_prefix, file_ext)
             return format_examples_prompt(examples)
-        finally:
-            conn.close()
+        else:
+            from mergeguard.feedback.store import get_db_path, open_db
+
+            db_path = get_db_path()
+            if not db_path.exists():
+                return ""
+            conn = open_db(db_path)
+            try:
+                examples = fetch_examples(conn, category_prefix, file_ext)
+                return format_examples_prompt(examples)
+            finally:
+                conn.close()
     except Exception as exc:
         log.debug("Few-shot retrieval skipped: %s", exc)
         return ""

@@ -405,24 +405,36 @@ def _record_to_store(
     findings: list[dict[str, Any]],
     inline_comment_ids: list[int | None],
 ) -> None:
-    """Write review + findings to the feedback SQLite store (non-fatal)."""
-    try:
-        from mergeguard.feedback.s3_sync import download_if_exists, upload
-        from mergeguard.feedback.store import (
-            get_db_path,
-            open_db,
-            record_findings,
-            record_review,
-        )
+    """Write review + findings to the feedback store (non-fatal). Auto-routes to DynamoDB in Lambda."""
+    import os
 
-        db_path = get_db_path()
-        download_if_exists(db_path)
-        conn = open_db(db_path)
-        fk = record_review(conn, owner, repo, pr_number, review_id, risk_bucket, risk_score)
-        record_findings(conn, fk, findings, inline_comment_ids)
-        conn.close()
-        upload(db_path)
-        log.debug("Feedback recorded: review_fk=%d", fk)
+    try:
+        if os.getenv("MERGEGUARD_STORE_BACKEND") == "dynamodb":
+            from mergeguard.feedback.dynamodb_store import (
+                record_findings_dynamo,
+                record_review_dynamo,
+            )
+
+            rid = record_review_dynamo(owner, repo, pr_number, review_id, risk_bucket, risk_score)
+            record_findings_dynamo(rid, findings, inline_comment_ids, owner, repo)
+            log.debug("Feedback recorded to DynamoDB: %s", rid)
+        else:
+            from mergeguard.feedback.s3_sync import download_if_exists, upload
+            from mergeguard.feedback.store import (
+                get_db_path,
+                open_db,
+                record_findings,
+                record_review,
+            )
+
+            db_path = get_db_path()
+            download_if_exists(db_path)
+            conn = open_db(db_path)
+            fk = record_review(conn, owner, repo, pr_number, review_id, risk_bucket, risk_score)
+            record_findings(conn, fk, findings, inline_comment_ids)
+            conn.close()
+            upload(db_path)
+            log.debug("Feedback recorded to SQLite: review_fk=%d", fk)
     except Exception as exc:
         log.warning("Feedback store write failed (non-fatal): %s", exc)
 

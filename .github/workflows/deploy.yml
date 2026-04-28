@@ -1,0 +1,88 @@
+name: Deploy MergeGuard to AWS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'infra/**'
+      - 'pyproject.toml'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: mergeguard
+  INFRA_STACK: mergeguard-infra
+  APP_STACK: mergeguard-app
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.MERGEGUARD_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.MERGEGUARD_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ── Deploy base infra (idempotent) ───────────────────────────────────────
+      - name: Deploy infra stack (ECR, DynamoDB, IAM)
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/infra.yaml \
+            --stack-name ${{ env.INFRA_STACK }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset
+
+      # ── Build & push Docker image ────────────────────────────────────────────
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: build
+        run: |
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
+          LATEST_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest"
+          docker build \
+            --platform linux/amd64 \
+            -f infra/Dockerfile \
+            -t "$IMAGE_URI" \
+            -t "$LATEST_URI" \
+            .
+          docker push "$IMAGE_URI"
+          docker push "$LATEST_URI"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      # ── Deploy app stack (Lambda, API GW, EventBridge) ───────────────────────
+      - name: Deploy app stack
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/app.yaml \
+            --stack-name ${{ env.APP_STACK }} \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides ImageUri=${{ steps.build.outputs.image_uri }} \
+            --no-fail-on-empty-changeset
+
+      # ── Print webhook URL ────────────────────────────────────────────────────
+      - name: Get webhook URL
+        run: |
+          URL=$(aws cloudformation describe-stacks \
+            --stack-name ${{ env.APP_STACK }} \
+            --query "Stacks[0].Outputs[?OutputKey=='WebhookUrl'].OutputValue" \
+            --output text)
+          echo ""
+          echo "════════════════════════════════════════════"
+          echo "  MergeGuard webhook URL:"
+          echo "  $URL"
+          echo "════════════════════════════════════════════"
+          echo "  Paste this into GitHub App → Webhook URL"
+          echo "════════════════════════════════════════════"

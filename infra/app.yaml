@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: MergeGuard - Application stack (Lambda, API Gateway, EventBridge)
+
+Parameters:
+  ImageUri:
+    Type: String
+    Description: ECR image URI for the Lambda function
+
+Resources:
+
+  # ── Lambda Function ──────────────────────────────────────────────────────────
+  ReviewLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: mergeguard-review
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ImageUri
+      Role: !ImportValue mergeguard-lambda-role-arn
+      Timeout: 600
+      MemorySize: 1024
+      Environment:
+        Variables:
+          GITHUB_APP_ID: '3530774'
+          BEDROCK_MODEL_ID: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'
+          BEDROCK_MODEL_HAIKU_ID: 'us.anthropic.claude-haiku-3-5-20241022-v1:0'
+          BEDROCK_REGION: 'us-east-1'
+          MERGEGUARD_REVIEWS_TABLE: 'mergeguard-reviews'
+          MERGEGUARD_FINDINGS_TABLE: 'mergeguard-findings'
+          MERGEGUARD_STORE_BACKEND: 'dynamodb'
+          MERGEGUARD_LOG_LEVEL: 'INFO'
+
+  # ── API Gateway (HTTP API) ───────────────────────────────────────────────────
+  WebhookApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: mergeguard-webhook
+      ProtocolType: HTTP
+      Description: MergeGuard GitHub webhook receiver
+
+  WebhookIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebhookApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ReviewLambda.Arn
+      PayloadFormatVersion: '2.0'
+
+  WebhookRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebhookApi
+      RouteKey: POST /webhook
+      Target: !Sub 'integrations/${WebhookIntegration}'
+
+  WebhookStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebhookApi
+      StageName: prod
+      AutoDeploy: true
+
+  LambdaApiPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ReviewLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebhookApi}/*/*'
+
+  # ── EventBridge — daily feedback sync ───────────────────────────────────────
+  FeedbackSyncRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: mergeguard-feedback-sync
+      Description: Daily poll of GitHub reactions to update feedback store
+      ScheduleExpression: 'cron(0 9 * * ? *)'
+      State: ENABLED
+      Targets:
+        - Id: FeedbackSyncTarget
+          Arn: !GetAtt ReviewLambda.Arn
+          Input: '{"source":"aws.events","action":"feedback_sync"}'
+
+  LambdaEventBridgePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ReviewLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt FeedbackSyncRule.Arn
+
+Outputs:
+  WebhookUrl:
+    Value: !Sub 'https://${WebhookApi}.execute-api.${AWS::Region}.amazonaws.com/prod/webhook'
+    Description: Paste this URL into GitHub App webhook settings
+  LambdaArn:
+    Value: !GetAtt ReviewLambda.Arn

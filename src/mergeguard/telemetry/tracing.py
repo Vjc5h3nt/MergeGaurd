@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import logging
 import os
 import time
@@ -90,3 +92,30 @@ def get_tracer(name: str = "mergeguard") -> Any:
         return trace.get_tracer(name)
     except ImportError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Active trace propagation via ContextVar
+# ---------------------------------------------------------------------------
+
+_active_trace: contextvars.ContextVar["ReviewTrace | None"] = contextvars.ContextVar(
+    "mergeguard_active_trace", default=None
+)
+
+
+def set_active_trace(trace: "ReviewTrace") -> contextvars.Token:  # type: ignore[type-arg]
+    return _active_trace.set(trace)
+
+
+def get_active_trace() -> "ReviewTrace | None":
+    return _active_trace.get()
+
+
+def reset_active_trace(token: "contextvars.Token") -> None:  # type: ignore[type-arg]
+    _active_trace.reset(token)
+
+
+@contextlib.contextmanager  # type: ignore[arg-type]
+def null_span():
+    """No-op context manager used when no active trace exists."""
+    yield

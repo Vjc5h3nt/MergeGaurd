@@ -8,7 +8,7 @@ from typing import Any
 
 from strands import Agent, tool
 
-from mergeguard.agents.base import build_agent, format_patch_context
+from mergeguard.agents.base import build_agent, dominant_file_ext, format_patch_context
 
 log = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ def _import_to_module(imp: str) -> str | None:
 
 
 def _build_architecture_agent() -> Agent:
-    return build_agent(system_prompt=_SYSTEM_PROMPT, tools=[])
+    return build_agent(system_prompt=_SYSTEM_PROMPT, tools=[], tier="fast")
 
 
 def run_architecture_review(
@@ -125,11 +125,16 @@ def run_architecture_review(
     dep_graph: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Run the architecture agent and return findings."""
+    import json
+
+    from mergeguard.feedback.retrieval import get_examples_block
+    from mergeguard.telemetry.tracing import get_active_trace, null_span
+
     agent = _build_architecture_agent()
     diff_context = format_patch_context(patches)
     import_diff = _extract_import_diff(patches)
+    examples_block = get_examples_block("architecture", dominant_file_ext(patches))
 
-    import json
     import_context = (
         "\n## Import Changes (structured)\n"
         f"```json\n{json.dumps(import_diff, indent=2)}\n```\n"
@@ -148,12 +153,16 @@ def run_architecture_review(
 {diff_context}
 {import_context}
 {dep_context}
+{examples_block}
 Review for architectural violations, layer boundary breaches, circular dependencies,
 and design pattern issues. Use the import changes as your primary evidence.
 Return findings as a JSON array.
 """
 
-    result = agent(prompt)
+    trace = get_active_trace()
+    ctx = trace.span("agent.architecture", {"files": len(patches)}) if trace else null_span()
+    with ctx:
+        result = agent(prompt)
     return _extract_findings(str(result))
 
 

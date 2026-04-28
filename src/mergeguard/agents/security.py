@@ -7,7 +7,7 @@ from typing import Any
 
 from strands import Agent, tool
 
-from mergeguard.agents.base import build_agent, format_patch_context
+from mergeguard.agents.base import build_agent, dominant_file_ext, format_patch_context
 
 log = logging.getLogger(__name__)
 
@@ -55,20 +55,27 @@ def run_security_review(
     pr_meta: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Run the security agent and return findings."""
+    from mergeguard.feedback.retrieval import get_examples_block
+    from mergeguard.telemetry.tracing import get_active_trace, null_span
+
     agent = _build_security_agent()
     diff_context = format_patch_context(patches)
+    examples_block = get_examples_block("security", dominant_file_ext(patches))
 
     prompt = f"""PR #{pr_meta.get('number')} — {pr_meta.get('title', '')}
 Author: {pr_meta.get('author', 'unknown')}
 
 ## Diff
 {diff_context}
-
+{examples_block}
 Perform a thorough security review of these changes. Focus on the OWASP Top 10 and secrets.
 Return findings as a JSON array.
 """
 
-    result = agent(prompt)
+    trace = get_active_trace()
+    ctx = trace.span("agent.security", {"files": len(patches)}) if trace else null_span()
+    with ctx:
+        result = agent(prompt)
     return _extract_findings(str(result))
 
 

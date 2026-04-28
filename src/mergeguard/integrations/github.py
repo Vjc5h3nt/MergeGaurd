@@ -234,6 +234,22 @@ class GitHubClient:
             f"/repos/{owner}/{repo}/check-runs/{check_run_id}", payload
         )
 
+    def get_reactions(
+        self,
+        owner: str,
+        repo: str,
+        comment_id: int,
+    ) -> list[dict[str, Any]]:
+        """Fetch reactions on a PR inline review comment.
+
+        Uses the Pull Request review comments reactions endpoint:
+        ``GET /repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions``
+        """
+        return self._get(  # type: ignore[return-value]
+            f"/repos/{owner}/{repo}/pulls/comments/{comment_id}/reactions",
+            params={"per_page": 100},
+        )
+
 
 def _now_iso() -> str:
     from datetime import datetime, timezone

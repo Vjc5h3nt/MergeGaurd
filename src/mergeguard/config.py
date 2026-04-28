@@ -63,7 +63,12 @@ class AppConfig(BaseModel):
     # AWS / Bedrock
     aws_region: str = Field(default="us-east-1")
     bedrock_model_id: str = Field(default="us.anthropic.claude-sonnet-4-5-20250929-v1:0")
+    bedrock_model_haiku_id: str = Field(default="us.anthropic.claude-haiku-3-5-20241022-v1:0")
     bedrock_region: str = Field(default="us-east-1")
+
+    # Feedback store
+    feedback_s3_bucket: str = Field(default="")
+    feedback_db_path: str = Field(default="")
 
     # MergeGuard
     log_level: str = Field(default="INFO")
@@ -78,11 +83,16 @@ class AppConfig(BaseModel):
             github_webhook_secret=os.getenv("GITHUB_WEBHOOK_SECRET", ""),
             aws_region=os.getenv("AWS_REGION", "us-east-1"),
             bedrock_model_id=os.getenv(
-                "BEDROCK_MODEL_ID", "anthropic.claude-sonnet-4-5-v1:0"
+                "BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+            ),
+            bedrock_model_haiku_id=os.getenv(
+                "BEDROCK_MODEL_HAIKU_ID", "us.anthropic.claude-haiku-3-5-20241022-v1:0"
             ),
             bedrock_region=os.getenv("BEDROCK_REGION", "us-east-1"),
             log_level=os.getenv("MERGEGUARD_LOG_LEVEL", "INFO"),
             cache_dir=Path(os.getenv("MERGEGUARD_CACHE_DIR", "/tmp/mergeguard-cache")),
+            feedback_s3_bucket=os.getenv("MERGEGUARD_FEEDBACK_BUCKET", ""),
+            feedback_db_path=os.getenv("MERGEGUARD_FEEDBACK_DB", ""),
         )
 
 

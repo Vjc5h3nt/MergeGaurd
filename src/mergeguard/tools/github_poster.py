@@ -100,25 +100,42 @@ def post_github_review(
     review_id = review.get("id")
     log.info("Posted review #%s on %s/%s#%d (event=%s)", review_id, owner, repo, pr_number, event)
 
-    # Inline comments posted individually — a bad line number won't block the rest
-    for comment in _build_inline_comments(findings):
+    # Inline comments posted individually — a bad line number won't block the rest.
+    # IDs are tracked aligned by findings index for the feedback store.
+    inline_comment_ids: list[int | None] = [None] * len(findings)
+    for i, f in enumerate(findings):
+        path = f.get("path")
+        line = f.get("line")
+        if not path or not line:
+            continue
         try:
-            gh.create_review_comment(
+            resp = gh.create_review_comment(
                 owner=owner,
                 repo=repo,
                 number=pr_number,
                 commit_id=head_sha,
-                path=comment["path"],
-                line=comment["line"],
-                side=comment.get("side", "RIGHT"),
-                body=comment["body"],
+                path=path,
+                line=int(line),
+                side="RIGHT",
+                body=_build_comment_body(f),
             )
+            inline_comment_ids[i] = resp.get("id")
         except Exception as exc:
-            log.warning("Skipped inline comment on %s:%s — %s", comment["path"], comment["line"], exc)
+            log.warning("Skipped inline comment on %s:%s — %s", path, line, exc)
 
     _post_check_run(owner, repo, head_sha, risk_bucket, risk_score, summary)
+    _record_to_store(
+        owner=owner,
+        repo=repo,
+        pr_number=pr_number,
+        review_id=review_id,
+        risk_bucket=risk_bucket,
+        risk_score=risk_score,
+        findings=findings,
+        inline_comment_ids=inline_comment_ids,
+    )
 
-    return {"posted": True, "review_id": review_id, "body": body}
+    return {"posted": True, "review_id": review_id, "inline_comment_ids": inline_comment_ids, "body": body}
 
 
 # ---------------------------------------------------------------------------
@@ -359,25 +376,55 @@ def _count_by_severity(findings: list[dict[str, Any]]) -> dict[str, int]:
 
 
 # ---------------------------------------------------------------------------
-# Inline comment builder
+# Inline comment body builder
 # ---------------------------------------------------------------------------
 
-def _build_inline_comments(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    comments = []
-    for f in findings:
-        path = f.get("path")
-        line = f.get("line")
-        if not path or not line:
-            continue
-        sev = f.get("severity", "?")
-        cat = f.get("category", "")
-        msg = f.get("message", "")
-        suggestion = f.get("suggestion", "")
-        body = f"**{sev}** · {cat}\n\n{msg}"
-        if suggestion:
-            body += f"\n\n**Suggested fix:**\n```\n{suggestion}\n```"
-        comments.append({"path": path, "line": int(line), "side": "RIGHT", "body": body})
-    return comments
+def _build_comment_body(f: dict[str, Any]) -> str:
+    """Build the body string for a single inline PR review comment."""
+    sev = f.get("severity", "?")
+    cat = f.get("category", "")
+    msg = f.get("message", "")
+    suggestion = f.get("suggestion", "")
+    body = f"**{sev}** · {cat}\n\n{msg}"
+    if suggestion:
+        body += f"\n\n**Suggested fix:**\n```\n{suggestion}\n```"
+    return body
+
+
+# ---------------------------------------------------------------------------
+# Feedback store write
+# ---------------------------------------------------------------------------
+
+def _record_to_store(
+    owner: str,
+    repo: str,
+    pr_number: int,
+    review_id: int | None,
+    risk_bucket: str,
+    risk_score: int,
+    findings: list[dict[str, Any]],
+    inline_comment_ids: list[int | None],
+) -> None:
+    """Write review + findings to the feedback SQLite store (non-fatal)."""
+    try:
+        from mergeguard.feedback.s3_sync import download_if_exists, upload
+        from mergeguard.feedback.store import (
+            get_db_path,
+            open_db,
+            record_findings,
+            record_review,
+        )
+
+        db_path = get_db_path()
+        download_if_exists(db_path)
+        conn = open_db(db_path)
+        fk = record_review(conn, owner, repo, pr_number, review_id, risk_bucket, risk_score)
+        record_findings(conn, fk, findings, inline_comment_ids)
+        conn.close()
+        upload(db_path)
+        log.debug("Feedback recorded: review_fk=%d", fk)
+    except Exception as exc:
+        log.warning("Feedback store write failed (non-fatal): %s", exc)
 
 
 # ---------------------------------------------------------------------------

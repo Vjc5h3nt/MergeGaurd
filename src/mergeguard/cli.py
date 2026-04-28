@@ -17,6 +17,8 @@ app = typer.Typer(
     help="AI PR Code Review Agent powered by AWS Strands SDK and Amazon Bedrock.",
     add_completion=False,
 )
+feedback_app = typer.Typer(name="feedback", help="Feedback loop commands.")
+app.add_typer(feedback_app, name="feedback")
 console = Console()
 
 
@@ -117,6 +119,31 @@ def _parse_pr_ref(pr: str) -> tuple[str, str, int] | None:
         return short_match.group(1), short_match.group(2), int(short_match.group(3))
 
     return None
+
+
+@feedback_app.command("sync")
+def feedback_sync(
+    verbose: bool = typer.Option(False, "--verbose", help="Verbose logging."),
+) -> None:
+    """Poll GitHub reactions on inline review comments and update the feedback store."""
+    cfg = get_config()
+    _setup_logging("DEBUG" if verbose else cfg.log_level)
+    log = logging.getLogger("mergeguard")
+
+    from mergeguard.feedback.s3_sync import download_if_exists, upload
+    from mergeguard.feedback.store import get_db_path, open_db
+    from mergeguard.integrations.github import get_github_client
+    from mergeguard.tools.feedback_sync import sync_reactions
+
+    db_path = get_db_path()
+    log.info("Feedback DB: %s", db_path)
+    download_if_exists(db_path)
+    conn = open_db(db_path)
+    gh = get_github_client()
+    count = sync_reactions(conn, gh)
+    conn.close()
+    upload(db_path)
+    console.print(f"[green]Synced reactions for {count} inline comment(s).[/green]")
 
 
 if __name__ == "__main__":

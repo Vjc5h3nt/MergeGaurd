@@ -74,7 +74,7 @@ Your goal is to produce a thorough, actionable, and precise review of a GitHub P
 
 def build_orchestrator() -> Agent:
     """Build and return the MergeGuard Orchestrator Strands Agent."""
-    model = build_model()
+    model = build_model(tier="capable")
     return Agent(
         model=model,
         system_prompt=_ORCHESTRATOR_PROMPT,
@@ -98,17 +98,30 @@ def review_pull_request(
     dry_run: bool = False,
 ) -> dict[str, Any]:
     """Convenience function: run a full review and return structured results."""
-    orchestrator = build_orchestrator()
+    import json
 
-    prompt = (
-        f"Review GitHub PR: owner={owner} repo={repo} pr_number={pr_number} "
-        f"dry_run={dry_run}"
-    )
+    from mergeguard.telemetry.tracing import ReviewTrace, reset_active_trace, set_active_trace
 
-    log.info("Starting orchestrated review for %s/%s#%d", owner, repo, pr_number)
-    result = orchestrator(prompt)
+    pr_ref = f"{owner}/{repo}#{pr_number}"
+    trace = ReviewTrace(pr_ref=pr_ref)
+    token = set_active_trace(trace)
+
+    try:
+        orchestrator = build_orchestrator()
+        prompt = (
+            f"Review GitHub PR: owner={owner} repo={repo} pr_number={pr_number} "
+            f"dry_run={dry_run}"
+        )
+        log.info("Starting orchestrated review for %s", pr_ref)
+        with trace.span("orchestrator.full_review", {"pr_ref": pr_ref}):
+            result = orchestrator(prompt)
+    finally:
+        trace_summary = trace.finish()
+        log.info("Trace: %s", json.dumps(trace_summary))
+        reset_active_trace(token)
 
     return {
-        "pr": f"{owner}/{repo}#{pr_number}",
+        "pr": pr_ref,
         "result": str(result),
+        "trace": trace_summary,
     }

@@ -13,14 +13,31 @@ def build_agent(
     tools: list[Any],
     model_id: str | None = None,
     region: str | None = None,
+    tier: str = "capable",
 ):  # type: ignore[return]
-    """Factory: build a Strands Agent with a BedrockModel."""
+    """Factory: build a Strands Agent with a BedrockModel.
+
+    Args:
+        tier: ``"capable"`` (Sonnet) or ``"fast"`` (Haiku).
+    """
     from strands import Agent
 
     from mergeguard.integrations.bedrock import build_model
 
-    model = build_model(model_id=model_id, region=region)
+    model = build_model(model_id=model_id, region=region, tier=tier)
     return Agent(model=model, system_prompt=system_prompt, tools=tools)
+
+
+def dominant_file_ext(patches: list[dict[str, Any]]) -> str:
+    """Return the most common file extension across changed files."""
+    from collections import Counter
+
+    exts = [
+        p["path"].rsplit(".", 1)[-1].lower()
+        for p in patches
+        if "." in p.get("path", "")
+    ]
+    return Counter(exts).most_common(1)[0][0] if exts else ""
 
 
 def format_patch_context(patches: list[dict[str, Any]], max_files: int = 20) -> str:

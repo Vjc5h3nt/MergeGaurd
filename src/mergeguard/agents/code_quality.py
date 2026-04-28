@@ -7,8 +7,7 @@ from typing import Any
 
 from strands import Agent, tool
 
-from mergeguard.agents.base import build_agent, format_patch_context
-from mergeguard.integrations.bedrock import build_model
+from mergeguard.agents.base import build_agent, dominant_file_ext, format_patch_context
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ Return findings as a JSON array inside a ```json ... ``` block. If no issues, re
 
 
 def _build_code_quality_agent() -> Agent:
-    return build_agent(system_prompt=_SYSTEM_PROMPT, tools=[])
+    return build_agent(system_prompt=_SYSTEM_PROMPT, tools=[], tier="fast")
 
 
 def run_code_quality_review(
@@ -45,8 +44,12 @@ def run_code_quality_review(
     pr_meta: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Run the code quality agent and return a list of findings."""
+    from mergeguard.feedback.retrieval import get_examples_block
+    from mergeguard.telemetry.tracing import get_active_trace, null_span
+
     agent = _build_code_quality_agent()
     diff_context = format_patch_context(patches)
+    examples_block = get_examples_block("quality", dominant_file_ext(patches))
 
     prompt = f"""PR #{pr_meta.get('number')} — {pr_meta.get('title', '')}
 Author: {pr_meta.get('author', 'unknown')}
@@ -54,11 +57,14 @@ Changed files: {pr_meta.get('changed_files', '?')} | +{pr_meta.get('additions', 
 
 ## Diff
 {diff_context}
-
+{examples_block}
 Review the above changes for code quality issues. Return findings as a JSON array.
 """
 
-    result = agent(prompt)
+    trace = get_active_trace()
+    ctx = trace.span("agent.code_quality", {"files": len(patches)}) if trace else null_span()
+    with ctx:
+        result = agent(prompt)
     return _extract_findings(str(result))
 
 

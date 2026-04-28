@@ -44,12 +44,19 @@ def run_code_quality_review(
     pr_meta: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Run the code quality agent and return a list of findings."""
+    from mergeguard.context import get_active_repo_context
     from mergeguard.feedback.retrieval import get_examples_block
     from mergeguard.telemetry.tracing import get_active_trace, null_span
+
+    repo_ctx = get_active_repo_context()
+    if repo_ctx and "code_quality" in repo_ctx.disabled_agents:
+        log.info("code_quality agent disabled by repo config")
+        return []
 
     agent = _build_code_quality_agent()
     diff_context = format_patch_context(patches)
     examples_block = get_examples_block("quality", dominant_file_ext(patches))
+    repo_block = repo_ctx.prompt_block("code_quality") if repo_ctx else ""
 
     prompt = f"""PR #{pr_meta.get('number')} — {pr_meta.get('title', '')}
 Author: {pr_meta.get('author', 'unknown')}
@@ -58,6 +65,7 @@ Changed files: {pr_meta.get('changed_files', '?')} | +{pr_meta.get('additions', 
 ## Diff
 {diff_context}
 {examples_block}
+{repo_block}
 Review the above changes for code quality issues. Return findings as a JSON array.
 """
 

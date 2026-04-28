@@ -1,0 +1,37 @@
+# Example .github/mergeguard.yml — drop this into any repo to customize
+# how MergeGuard reviews your PRs. All fields are optional.
+
+# Free-form reviewer guidelines injected into every specialist's prompt.
+# Write these the way you'd brief a human code reviewer.
+rules: |
+  - Avoid adding new runtime dependencies without team approval.
+  - All new public functions must have docstrings.
+  - Prefer composition over inheritance.
+  - Database migrations must be backwards-compatible (no NOT NULL without default).
+
+# Additional rules shown only to specific specialist agents.
+per_agent_rules:
+  security: |
+    Our auth tokens live in `src/auth/session.py` — any change there
+    deserves extra scrutiny. Never flag `secrets/test-fixtures/**` as
+    hardcoded credentials.
+  architecture: |
+    Layering rule: `api/` -> `services/` -> `repositories/` -> `db/`.
+    An inward import from `db/` to `api/` is always wrong.
+
+# Extra docs to pull in as context (on top of the defaults:
+# docs/ARCHITECTURE.md, docs/CODING_STANDARDS.md, ARCHITECTURE.md, CONTRIBUTING.md).
+context_docs:
+  - docs/API_CONVENTIONS.md
+  - docs/SECURITY_PLAYBOOK.md
+
+# Override the built-in 0-100 risk score thresholds. Defaults shown.
+risk_thresholds:
+  block: 75
+  warn: 50
+
+# Disable specialists that don't apply to your repo (e.g. if you're
+# reviewing docs-only or Terraform). For `regression`, the deterministic
+# static-analysis layer still runs; only the LLM layer is skipped.
+disable: []
+#  - architecture

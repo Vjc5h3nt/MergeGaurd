@@ -96,29 +96,60 @@ def review_pull_request(
     repo: str,
     pr_number: int,
     dry_run: bool = False,
+    repo_context: Any = None,
 ) -> dict[str, Any]:
-    """Convenience function: run a full review and return structured results."""
+    """Convenience function: run a full review and return structured results.
+
+    Args:
+        repo_context: Optional pre-loaded RepoContext. If None, loads from the
+            repo at head_sha (requires a functioning GitHubClient singleton).
+    """
     import json
 
+    from mergeguard.context import (
+        load_repo_context,
+        reset_active_repo_context,
+        set_active_repo_context,
+    )
+    from mergeguard.integrations.github import get_github_client
     from mergeguard.telemetry.tracing import ReviewTrace, reset_active_trace, set_active_trace
 
     pr_ref = f"{owner}/{repo}#{pr_number}"
     trace = ReviewTrace(pr_ref=pr_ref)
-    token = set_active_trace(trace)
+    trace_token = set_active_trace(trace)
 
+    # Load repo-specific rules/docs before any specialist runs. We fetch at PR
+    # head_sha so rules added in this PR itself take effect for the review.
+    repo_ctx_token = None
     try:
-        orchestrator = build_orchestrator()
-        prompt = (
-            f"Review GitHub PR: owner={owner} repo={repo} pr_number={pr_number} "
-            f"dry_run={dry_run}"
-        )
-        log.info("Starting orchestrated review for %s", pr_ref)
-        with trace.span("orchestrator.full_review", {"pr_ref": pr_ref}):
-            result = orchestrator(prompt)
+        if repo_context is None:
+            try:
+                head_sha = get_github_client().get_pull_request(owner, repo, pr_number)["head"]["sha"]
+                with trace.span("orchestrator.load_repo_context", {"pr_ref": pr_ref}):
+                    repo_context = load_repo_context(owner, repo, head_sha)
+            except Exception as exc:
+                log.warning("RepoContext load failed — proceeding with defaults: %s", exc)
+                repo_context = None
+
+        if repo_context is not None:
+            repo_ctx_token = set_active_repo_context(repo_context)
+
+        try:
+            orchestrator = build_orchestrator()
+            prompt = (
+                f"Review GitHub PR: owner={owner} repo={repo} pr_number={pr_number} "
+                f"dry_run={dry_run}"
+            )
+            log.info("Starting orchestrated review for %s", pr_ref)
+            with trace.span("orchestrator.full_review", {"pr_ref": pr_ref}):
+                result = orchestrator(prompt)
+        finally:
+            if repo_ctx_token is not None:
+                reset_active_repo_context(repo_ctx_token)
     finally:
         trace_summary = trace.finish()
         log.info("Trace: %s", json.dumps(trace_summary))
-        reset_active_trace(token)
+        reset_active_trace(trace_token)
 
     return {
         "pr": pr_ref,

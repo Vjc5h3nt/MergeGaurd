@@ -127,13 +127,20 @@ def run_architecture_review(
     """Run the architecture agent and return findings."""
     import json
 
+    from mergeguard.context import get_active_repo_context
     from mergeguard.feedback.retrieval import get_examples_block
     from mergeguard.telemetry.tracing import get_active_trace, null_span
+
+    repo_ctx = get_active_repo_context()
+    if repo_ctx and "architecture" in repo_ctx.disabled_agents:
+        log.info("architecture agent disabled by repo config")
+        return []
 
     agent = _build_architecture_agent()
     diff_context = format_patch_context(patches)
     import_diff = _extract_import_diff(patches)
     examples_block = get_examples_block("architecture", dominant_file_ext(patches))
+    repo_block = repo_ctx.prompt_block("architecture") if repo_ctx else ""
 
     import_context = (
         "\n## Import Changes (structured)\n"
@@ -154,6 +161,7 @@ def run_architecture_review(
 {import_context}
 {dep_context}
 {examples_block}
+{repo_block}
 Review for architectural violations, layer boundary breaches, circular dependencies,
 and design pattern issues. Use the import changes as your primary evidence.
 Return findings as a JSON array.

@@ -206,12 +206,21 @@ def run_regression_review(
     # --- LLM layer ---
     import json
 
+    from mergeguard.context import get_active_repo_context
     from mergeguard.feedback.retrieval import get_examples_block
     from mergeguard.telemetry.tracing import get_active_trace, null_span
+
+    repo_ctx = get_active_repo_context()
+    # Regression's deterministic checks are too valuable to skip — if disabled
+    # by repo config, we only drop the LLM layer and return the static findings.
+    if repo_ctx and "regression" in repo_ctx.disabled_agents:
+        log.info("regression LLM layer disabled by repo config (deterministic still runs)")
+        return deterministic
 
     agent = _build_regression_agent()
     diff_context = format_patch_context(patches)
     examples_block = get_examples_block("regression", dominant_file_ext(patches))
+    repo_block = repo_ctx.prompt_block("regression") if repo_ctx else ""
 
     det_context = ""
     if deterministic:
@@ -234,6 +243,7 @@ def run_regression_review(
 {det_context}
 {symbol_context}
 {examples_block}
+{repo_block}
 Analyze for regression risks. Return ALL findings (include the deterministic ones above plus
 any additional ones you discover) as a single JSON array.
 """

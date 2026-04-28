@@ -68,24 +68,42 @@ jobs:
       id-token: write
       contents: read
     steps:
+      - name: Check OIDC role configured
+        id: preflight
+        env:
+          OIDC_ROLE: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+        run: |
+          if [ -z "$OIDC_ROLE" ]; then
+            echo "::notice::AWS_OIDC_ROLE_ARN not set — skipping Bedrock smoke test. To enable, configure OIDC in AWS and set the secret."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.preflight.outputs.skip == 'false'
 
       - name: Configure AWS credentials (OIDC)
+        if: steps.preflight.outputs.skip == 'false'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Set up Python 3.12
+        if: steps.preflight.outputs.skip == 'false'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install uv
+        if: steps.preflight.outputs.skip == 'false'
         run: pip install uv
 
       - name: Install dependencies
+        if: steps.preflight.outputs.skip == 'false'
         run: uv pip install --system -e ".[dev]"
 
       - name: Bedrock smoke test
+        if: steps.preflight.outputs.skip == 'false'
         run: mergeguard smoke-test

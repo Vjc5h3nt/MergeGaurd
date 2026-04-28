@@ -54,7 +54,7 @@ def generate_app_jwt(app_id: int, private_key: str) -> str:
     payload = {
         "iat": now - 60,   # issued 60s ago (handles clock skew)
         "exp": now + 540,  # expires in 9 min (max 10)
-        "iss": app_id,
+        "iss": str(app_id),
     }
     return jwt.encode(payload, private_key, algorithm="RS256")
 

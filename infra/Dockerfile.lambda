@@ -1,0 +1,15 @@
+FROM public.ecr.aws/lambda/python:3.12
+
+# System deps for tree-sitter compilation
+RUN dnf install -y gcc git && dnf clean all
+
+WORKDIR ${LAMBDA_TASK_ROOT}
+
+# Copy source first so uv can install the package
+COPY pyproject.toml ./
+COPY src/ ./src/
+
+RUN pip install --no-cache-dir uv && \
+    uv pip install --system .
+
+CMD ["mergeguard.lambda_handler.handler"]

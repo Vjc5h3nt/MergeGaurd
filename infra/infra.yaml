@@ -71,6 +71,12 @@ Resources:
                 Resource: '*'
               - Effect: Allow
                 Action:
+                  - aws-marketplace:ViewSubscriptions
+                  - aws-marketplace:Subscribe
+                  - aws-marketplace:Unsubscribe
+                Resource: '*'
+              - Effect: Allow
+                Action:
                   - dynamodb:PutItem
                   - dynamodb:GetItem
                   - dynamodb:UpdateItem

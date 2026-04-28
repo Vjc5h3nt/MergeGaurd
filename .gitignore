@@ -17,3 +17,7 @@ htmlcov/
 *.key
 cassettes/
 .cache/
+
+# Claude Code agent memory — local context only, not for git
+memory/
+.claude/

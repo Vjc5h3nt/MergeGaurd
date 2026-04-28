@@ -2,21 +2,26 @@ diff --git a/src/payment/processor.py b/src/payment/processor.py
 index abc1234..def5678 100644
 --- a/src/payment/processor.py
 +++ b/src/payment/processor.py
-@@ -1,8 +1,12 @@ class PaymentProcessor:
+@@ -1,5 +1,9 @@
+ class PaymentProcessor:
      def charge(self, user_id, amount):
 -        query = "SELECT * FROM payments WHERE user_id = " + str(user_id)
 -        return self.db.execute(query)
+-        pass
 +        # TODO: parameterize this query
 +        query = f"SELECT * FROM payments WHERE user_id = {user_id}"
 +        result = self.db.execute(query)
 +        if result is None:
 +            raise ValueError("Payment not found")
 +        return result
-
++        pass
+@@ -7,5 +11,7 @@
      def validate_amount(self, amount):
 -        if amount < 0:
-+        if amount is None or amount < 0:
++        if amount is None:
++            return False
++        if amount < 0:
              return False
 +        if amount > 1_000_000:
-+            return False
          return True
+-        # end

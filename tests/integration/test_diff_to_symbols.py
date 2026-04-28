@@ -17,9 +17,6 @@ def _tree_sitter_available() -> bool:
     return find_spec("tree_sitter_languages") is not None
 
 
-@pytest.mark.xfail(
-    reason="sample_diff.diff fixture has malformed hunk line counts — pre-existing bug"
-)
 def test_parse_sample_diff():
     diff_text = (FIXTURE_DIR / "sample_diff.diff").read_text()
     patches = parse_diff(diff_text)
@@ -31,9 +28,6 @@ def test_parse_sample_diff():
 @pytest.mark.skipif(
     not _tree_sitter_available(),
     reason="tree-sitter-languages not installed",
-)
-@pytest.mark.xfail(
-    reason="tree_sitter_loader API mismatch with installed tree-sitter — pre-existing bug"
 )
 def test_symbol_extraction_python():
     source = (FIXTURE_DIR / "sample_pr.py").read_text()
@@ -54,9 +48,6 @@ def test_symbol_extraction_python():
 @pytest.mark.skipif(
     not _tree_sitter_available(),
     reason="tree-sitter-languages not installed",
-)
-@pytest.mark.xfail(
-    reason="tree_sitter_loader API mismatch with installed tree-sitter — pre-existing bug"
 )
 def test_symbols_match_golden_fixture():
     source = (FIXTURE_DIR / "sample_pr.py").read_text()

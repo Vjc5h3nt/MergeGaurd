@@ -37,12 +37,22 @@ def get_parser(language: str) -> Any:
         return _PARSERS[language]
 
     try:
-        import tree_sitter_languages
-        from tree_sitter import Language, Parser
+        import warnings
 
-        lang_obj = tree_sitter_languages.get_language(language)
-        parser = Parser()
-        parser.set_language(Language(lang_obj))  # type: ignore[arg-type,attr-defined]
+        # tree-sitter 0.21 emits a FutureWarning from inside its own
+        # Language constructor about the deprecated (path, name) form.
+        # The warning isn't actionable from our code — suppress it so
+        # logs aren't noisy. (Fixed when we migrate to tree-sitter 0.22+.)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning, module="tree_sitter")
+            import tree_sitter_languages
+            from tree_sitter import Parser
+
+            # tree_sitter_languages.get_language() already returns a Language —
+            # don't wrap it again.
+            lang_obj = tree_sitter_languages.get_language(language)
+            parser = Parser()
+            parser.set_language(lang_obj)
         _PARSERS[language] = parser
         log.debug("Loaded tree-sitter parser for %s", language)
         return parser

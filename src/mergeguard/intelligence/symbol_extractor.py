@@ -117,11 +117,13 @@ def extract_symbols(
 
 def _extract_name(node: Any, language: str) -> str | None:
     """Extract the identifier name from a definition node."""
-    # Try the 'name' child node
+    # The canonical way: look up the "name" field on the node.
+    named = node.child_by_field_name(_NAME_FIELD)
+    if named is not None and named.text:
+        return named.text.decode("utf-8")
+    # Fallback: first identifier-ish child (some grammars don't use fields).
     for child in node.children:
         if child.type in ("identifier", "type_identifier", "property_identifier"):
-            return child.text.decode("utf-8")
-        if child.field_name == _NAME_FIELD:
             return child.text.decode("utf-8")
     return None
 

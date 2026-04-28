@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -57,9 +56,7 @@ def compute_pr_score(findings: list[dict[str, Any]]) -> PRScore:
         if path:
             per_file[path] = per_file.get(path, 0.0) + fs
 
-    raw = sum(
-        dimension_scores[d] * w for d, w in _DIMENSION_WEIGHTS.items()
-    )
+    raw = sum(dimension_scores[d] * w for d, w in _DIMENSION_WEIGHTS.items())
     score = min(100, int(raw))
 
     bucket = "LOW"
@@ -80,8 +77,8 @@ def compute_pr_score(findings: list[dict[str, Any]]) -> PRScore:
 def render_score_table(pr_score: PRScore, findings: list[dict[str, Any]]) -> str:
     """Render a markdown summary table for the GitHub review comment."""
     lines = [
-        f"| Dimension | Score |",
-        f"|-----------|-------|",
+        "| Dimension | Score |",
+        "|-----------|-------|",
     ]
     for dim, val in pr_score.breakdown.items():
         bar = "█" * int(val / 10)

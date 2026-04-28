@@ -1,6 +1,5 @@
 """Unit tests for tools/impact_analyzer.py."""
 
-import pytest
 from mergeguard.tools.impact_analyzer import _build_called_by_graph, _build_symbol_to_file
 
 
@@ -31,11 +30,16 @@ def test_symbol_to_file_extracts_classes():
 
 
 def test_called_by_graph_infers_edges():
-    patches = [_patch("src/api.py", [
-        "+def handle_request(req):",
-        "+    result = process_payment(req.amount)",
-        "+    return result",
-    ])]
+    patches = [
+        _patch(
+            "src/api.py",
+            [
+                "+def handle_request(req):",
+                "+    result = process_payment(req.amount)",
+                "+    return result",
+            ],
+        )
+    ]
     cbg = _build_called_by_graph(patches)
     # process_payment should have handle_request as a caller
     callers = cbg.get("src/api.py::process_payment", [])
@@ -43,10 +47,15 @@ def test_called_by_graph_infers_edges():
 
 
 def test_called_by_graph_ignores_builtins():
-    patches = [_patch("src/api.py", [
-        "+def my_func(x):",
-        "+    return str(len(x))",
-    ])]
+    patches = [
+        _patch(
+            "src/api.py",
+            [
+                "+def my_func(x):",
+                "+    return str(len(x))",
+            ],
+        )
+    ]
     cbg = _build_called_by_graph(patches)
     # builtins str/len should NOT appear
     assert "src/api.py::str" not in cbg

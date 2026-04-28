@@ -1,18 +1,19 @@
 """Unit tests for intelligence/change_classifier.py."""
 
-import pytest
 from mergeguard.intelligence.change_classifier import (
     ChangeClass,
-    classify_changes,
     _is_config_file,
-    _is_test_file,
     _is_docs_file,
+    _is_test_file,
+    classify_changes,
     summarize_classification,
 )
 from mergeguard.intelligence.symbol_extractor import Symbol
 
 
-def _sym(name: str, file: str = "src/foo.py", sig: str = "def foo():", sig_hash: str = "abc") -> Symbol:
+def _sym(
+    name: str, file: str = "src/foo.py", sig: str = "def foo():", sig_hash: str = "abc"
+) -> Symbol:
     return Symbol(
         name=name,
         kind="function",
@@ -42,9 +43,7 @@ def test_added_symbol_is_new_file():
 def test_signature_changed():
     base = [_sym("foo", sig="def foo():", sig_hash="aaa")]
     head = [_sym("foo", sig="def foo(x: int):", sig_hash="bbb")]
-    deltas = classify_changes(
-        base, head, [{"path": "src/foo.py", "status": "modified"}]
-    )
+    deltas = classify_changes(base, head, [{"path": "src/foo.py", "status": "modified"}])
     sig_deltas = [d for d in deltas if d.name == "foo"]
     assert sig_deltas
     assert sig_deltas[0].change_class == ChangeClass.SIGNATURE
@@ -55,13 +54,9 @@ def test_logic_changed_same_signature():
     head = [_sym("foo", sig="def foo():", sig_hash="aaa")]
     # Same signature hash but file modified — no delta in symbols but...
     # change_classifier won't emit a delta for identical symbols:
-    deltas = classify_changes(
-        base, head, [{"path": "src/foo.py", "status": "modified"}]
-    )
-    logic_deltas = [d for d in deltas if d.name == "foo"]
-    # Should produce LOGIC classification since signatures match but file was modified
-    # (implementation emits no delta for completely unchanged symbols — correct)
-    # The test verifies no SIGNATURE delta is produced for unchanged sig
+    deltas = classify_changes(base, head, [{"path": "src/foo.py", "status": "modified"}])
+    # change_classifier emits no delta for completely unchanged symbols;
+    # the assertion below guards against a SIGNATURE delta for an unchanged sig.
     assert not any(d.change_class == ChangeClass.SIGNATURE and d.name == "foo" for d in deltas)
 
 

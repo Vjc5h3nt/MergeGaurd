@@ -38,9 +38,9 @@ _BUCKET_EMOJI = {
 
 _VERDICT = {
     "BLOCKING": "Changes requested — resolve **BLOCKING** issues before merging.",
-    "HIGH":     "Changes requested — resolve **HIGH** severity issues before merging.",
-    "MEDIUM":   "Review needed — consider addressing **MEDIUM** issues.",
-    "LOW":      "Looks good — low risk.",
+    "HIGH": "Changes requested — resolve **HIGH** severity issues before merging.",
+    "MEDIUM": "Review needed — consider addressing **MEDIUM** issues.",
+    "LOW": "Looks good — low risk.",
 }
 
 
@@ -78,7 +78,9 @@ def post_github_review(
     Returns:
         Dict with 'posted' bool, 'review_id' (if posted), 'body' (markdown).
     """
-    body = _render_review_body(risk_score, risk_bucket, summary, findings, patches or [], file_summaries or [])
+    body = _render_review_body(
+        risk_score, risk_bucket, summary, findings, patches or [], file_summaries or []
+    )
 
     if dry_run:
         log.info("Dry run — review body formatted but not posted.")
@@ -135,12 +137,18 @@ def post_github_review(
         inline_comment_ids=inline_comment_ids,
     )
 
-    return {"posted": True, "review_id": review_id, "inline_comment_ids": inline_comment_ids, "body": body}
+    return {
+        "posted": True,
+        "review_id": review_id,
+        "inline_comment_ids": inline_comment_ids,
+        "body": body,
+    }
 
 
 # ---------------------------------------------------------------------------
 # Renderer
 # ---------------------------------------------------------------------------
+
 
 def _render_review_body(
     risk_score: int,
@@ -150,19 +158,23 @@ def _render_review_body(
     patches: list[dict[str, Any]],
     file_summaries: list[dict[str, Any]],
 ) -> str:
-    emoji   = _BUCKET_EMOJI.get(risk_bucket, "⚪")
+    emoji = _BUCKET_EMOJI.get(risk_bucket, "⚪")
     n_files = len(patches)
 
     sorted_findings = sorted(
         findings,
         key=lambda f: (_SEV_ORDER.get(f.get("severity", "INFO"), 5), -float(f.get("impact", 0))),
     )
-    main_findings = [f for f in sorted_findings if f.get("severity") in ("CRITICAL", "HIGH", "MEDIUM")]
-    low_findings  = [f for f in sorted_findings if f.get("severity") in ("LOW", "INFO")]
-    n_total       = len(sorted_findings)
+    main_findings = [
+        f for f in sorted_findings if f.get("severity") in ("CRITICAL", "HIGH", "MEDIUM")
+    ]
+    low_findings = [f for f in sorted_findings if f.get("severity") in ("LOW", "INFO")]
+    n_total = len(sorted_findings)
 
     # Build a path→description lookup from file_summaries
-    fs_map: dict[str, str] = {s["path"]: s["description"] for s in file_summaries if "path" in s and "description" in s}
+    fs_map: dict[str, str] = {
+        s["path"]: s["description"] for s in file_summaries if "path" in s and "description" in s
+    }
 
     lines: list[str] = []
 
@@ -179,7 +191,7 @@ def _render_review_body(
     if patches:
         lines += ["**Changes**", ""]
         for p in patches:
-            path   = p.get("path", "")
+            path = p.get("path", "")
             status = p.get("status", "modified")
             if path in fs_map:
                 desc = fs_map[path]
@@ -206,8 +218,8 @@ def _render_review_body(
             "| :--- | :--- |",
         ]
         for p in patches:
-            path        = p.get("path", "")
-            status      = p.get("status", "modified")
+            path = p.get("path", "")
+            status = p.get("status", "modified")
             file_issues = [f for f in sorted_findings if f.get("path") == path]
             lines.append(f"| `{path}` | {_table_cell(path, status, file_issues)} |")
         lines += [""]
@@ -267,9 +279,7 @@ def _infer_change_description(path: str, status: str, findings: list[dict[str, A
         return f"Renames `{name}`."
     file_findings = [f for f in findings if f.get("path") == path]
     if file_findings:
-        cats = list(dict.fromkeys(
-            f.get("category", "").split("/")[-1] for f in file_findings
-        ))
+        cats = list(dict.fromkeys(f.get("category", "").split("/")[-1] for f in file_findings))
         return f"Updates `{name}`. Areas reviewed: {', '.join(cats[:3])}."
     return f"Updates `{name}`."
 
@@ -293,14 +303,14 @@ def _table_cell(path: str, status: str, file_findings: list[dict[str, Any]]) -> 
 
 def _render_comment(f: dict[str, Any]) -> list[str]:
     """Render a single CRITICAL/HIGH/MEDIUM finding."""
-    sev        = f.get("severity", "INFO")
-    cat        = f.get("category", "")
-    msg        = f.get("message", "")
-    path       = f.get("path", "")
-    line_no    = f.get("line", "")
+    sev = f.get("severity", "INFO")
+    cat = f.get("category", "")
+    msg = f.get("message", "")
+    path = f.get("path", "")
+    line_no = f.get("line", "")
     suggestion = f.get("suggestion", "")
-    impact     = float(f.get("impact", 0))
-    is_det     = f.get("deterministic", False)
+    impact = float(f.get("impact", 0))
+    is_det = f.get("deterministic", False)
 
     loc = f"`{path}` line {line_no}" if line_no else (f"`{path}`" if path else "")
 
@@ -336,11 +346,11 @@ def _render_comment(f: dict[str, Any]) -> list[str]:
 
 def _render_low_confidence(f: dict[str, Any]) -> list[str]:
     """Render a LOW/INFO finding inside the collapsed low-confidence section."""
-    sev        = f.get("severity", "INFO")
-    cat        = f.get("category", "")
-    msg        = f.get("message", "")
-    path       = f.get("path", "")
-    line_no    = f.get("line", "")
+    sev = f.get("severity", "INFO")
+    cat = f.get("category", "")
+    msg = f.get("message", "")
+    path = f.get("path", "")
+    line_no = f.get("line", "")
     suggestion = f.get("suggestion", "")
 
     loc = f"`{path}` line {line_no}" if line_no else (f"`{path}`" if path else "")
@@ -379,6 +389,7 @@ def _count_by_severity(findings: list[dict[str, Any]]) -> dict[str, int]:
 # Inline comment body builder
 # ---------------------------------------------------------------------------
 
+
 def _build_comment_body(f: dict[str, Any]) -> str:
     """Build the body string for a single inline PR review comment."""
     sev = f.get("severity", "?")
@@ -394,6 +405,7 @@ def _build_comment_body(f: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # Feedback store write
 # ---------------------------------------------------------------------------
+
 
 def _record_to_store(
     owner: str,
@@ -442,6 +454,7 @@ def _record_to_store(
 # ---------------------------------------------------------------------------
 # Check Run
 # ---------------------------------------------------------------------------
+
 
 def _post_check_run(
     owner: str,

@@ -1,6 +1,5 @@
 """Unit tests for tools/risk_scorer.py."""
 
-import pytest
 from mergeguard.tools.risk_scorer import (
     _category_to_dimension,
     _score_to_bucket,

@@ -69,8 +69,8 @@ def run_security_review(
     examples_block = get_examples_block("security", dominant_file_ext(patches))
     repo_block = repo_ctx.prompt_block("security") if repo_ctx else ""
 
-    prompt = f"""PR #{pr_meta.get('number')} — {pr_meta.get('title', '')}
-Author: {pr_meta.get('author', 'unknown')}
+    prompt = f"""PR #{pr_meta.get("number")} — {pr_meta.get("title", "")}
+Author: {pr_meta.get("author", "unknown")}
 
 ## Diff
 {diff_context}

@@ -11,10 +11,10 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class ImportEdge:
-    source_file: str        # file that contains the import
-    imported_name: str      # name being imported
-    module_path: str        # resolved module / package path
-    is_external: bool       # True if from a third-party package
+    source_file: str  # file that contains the import
+    imported_name: str  # name being imported
+    module_path: str  # resolved module / package path
+    is_external: bool  # True if from a third-party package
 
 
 @dataclass
@@ -30,11 +30,7 @@ class DependencyGraph:
 
     def import_map(self) -> dict[str, str]:
         """Returns {imported_name: source_file} for intra-repo imports only."""
-        return {
-            e.imported_name: e.module_path
-            for e in self.edges
-            if not e.is_external
-        }
+        return {e.imported_name: e.module_path for e in self.edges if not e.is_external}
 
     def to_dict(self) -> dict[str, Any]:
         return {

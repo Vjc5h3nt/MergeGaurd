@@ -1,7 +1,6 @@
 """Unit tests for diff/parser.py."""
 
-import pytest
-from mergeguard.diff.parser import FilePatch, Hunk, parse_diff
+from mergeguard.diff.parser import parse_diff
 
 SIMPLE_DIFF = """\
 diff --git a/src/foo.py b/src/foo.py

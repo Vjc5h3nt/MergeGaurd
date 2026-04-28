@@ -32,11 +32,7 @@ def dominant_file_ext(patches: list[dict[str, Any]]) -> str:
     """Return the most common file extension across changed files."""
     from collections import Counter
 
-    exts = [
-        p["path"].rsplit(".", 1)[-1].lower()
-        for p in patches
-        if "." in p.get("path", "")
-    ]
+    exts = [p["path"].rsplit(".", 1)[-1].lower() for p in patches if "." in p.get("path", "")]
     return Counter(exts).most_common(1)[0][0] if exts else ""
 
 

@@ -43,7 +43,7 @@ class RepoConfig(BaseModel):
     output: OutputConfig = Field(default_factory=OutputConfig)
 
     @classmethod
-    def from_yaml(cls, path: Path) -> "RepoConfig":
+    def from_yaml(cls, path: Path) -> RepoConfig:
         if not path.exists():
             return cls()
         with open(path) as f:
@@ -75,7 +75,7 @@ class AppConfig(BaseModel):
     cache_dir: Path = Field(default=Path("/tmp/mergeguard-cache"))
 
     @classmethod
-    def from_env(cls) -> "AppConfig":
+    def from_env(cls) -> AppConfig:
         return cls(
             github_token=os.getenv("GITHUB_TOKEN", ""),
             github_app_id=os.getenv("GITHUB_APP_ID", ""),

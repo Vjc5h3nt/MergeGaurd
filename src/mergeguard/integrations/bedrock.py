@@ -24,6 +24,7 @@ def _load_bedrock_credentials() -> dict | None:
 
     try:
         import boto3
+
         sm = boto3.client("secretsmanager", region_name=os.getenv("AWS_REGION", "us-east-1"))
         resp = sm.get_secret_value(SecretId=secret_name)
         creds = json.loads(resp["SecretString"])
@@ -34,7 +35,11 @@ def _load_bedrock_credentials() -> dict | None:
             "aws_session_token": creds.get("aws_session_token"),
         }
     except Exception as exc:
-        log.warning("Could not load Bedrock credentials from secret '%s': %s — falling back to IAM role", secret_name, exc)
+        log.warning(
+            "Could not load Bedrock credentials from secret '%s': %s — falling back to IAM role",
+            secret_name,
+            exc,
+        )
         return None
 
 
@@ -65,7 +70,9 @@ def build_model(  # type: ignore[return]
         resolved_model = cfg.bedrock_model_id
     resolved_region = region or cfg.bedrock_region
 
-    log.debug("Building BedrockModel: model=%s region=%s tier=%s", resolved_model, resolved_region, tier)
+    log.debug(
+        "Building BedrockModel: model=%s region=%s tier=%s", resolved_model, resolved_region, tier
+    )
 
     # Use explicit credentials from Secrets Manager if available,
     # otherwise fall back to the Lambda's IAM role.
@@ -77,7 +84,6 @@ def build_model(  # type: ignore[return]
             aws_session_token=creds.get("aws_session_token"),
             region_name=resolved_region,
         )
-        boto3_client = session.client("bedrock-runtime", region_name=resolved_region)
         return BedrockModel(model_id=resolved_model, boto_session=session)
 
     return BedrockModel(model_id=resolved_model, region_name=resolved_region)

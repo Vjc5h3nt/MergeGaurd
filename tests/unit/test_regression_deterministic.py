@@ -1,6 +1,5 @@
 """Unit tests for regression agent deterministic pre-checks."""
 
-import pytest
 from mergeguard.agents.regression import _deterministic_regression_checks, _normalize_params
 
 
@@ -26,43 +25,51 @@ def test_ignores_removed_private_function():
 
 
 def test_detects_signature_change():
-    patches = [_patch(
-        "src/api.py",
-        ["-def charge(self, user_id, amount):"],
-        ["+def charge(self, user_id, amount, currency):"],
-    )]
+    patches = [
+        _patch(
+            "src/api.py",
+            ["-def charge(self, user_id, amount):"],
+            ["+def charge(self, user_id, amount, currency):"],
+        )
+    ]
     findings = _deterministic_regression_checks(patches)
     assert any(f["category"] == "regression/signature-change" for f in findings)
     assert any("charge" in f["message"] for f in findings)
 
 
 def test_no_finding_when_params_unchanged():
-    patches = [_patch(
-        "src/api.py",
-        ["-def charge(self, user_id: str, amount: float) -> bool:"],
-        ["+def charge(self, user_id: str, amount: float) -> None:"],
-    )]
+    patches = [
+        _patch(
+            "src/api.py",
+            ["-def charge(self, user_id: str, amount: float) -> bool:"],
+            ["+def charge(self, user_id: str, amount: float) -> None:"],
+        )
+    ]
     # Return type changes don't affect params — no signature-change finding
     findings = _deterministic_regression_checks(patches)
     assert not any(f["category"] == "regression/signature-change" for f in findings)
 
 
 def test_detects_possible_rename():
-    patches = [_patch(
-        "src/utils.py",
-        ["-def validate_input(data):"],
-        ["+def validate_request(data):"],
-    )]
+    patches = [
+        _patch(
+            "src/utils.py",
+            ["-def validate_input(data):"],
+            ["+def validate_request(data):"],
+        )
+    ]
     findings = _deterministic_regression_checks(patches)
     assert any(f["category"] == "regression/possible-rename" for f in findings)
 
 
 def test_deleted_file_skipped():
-    patches = [{
-        "path": "src/old.py",
-        "is_deleted_file": True,
-        "hunks": [{"removed": ["-def foo():"], "added": []}],
-    }]
+    patches = [
+        {
+            "path": "src/old.py",
+            "is_deleted_file": True,
+            "hunks": [{"removed": ["-def foo():"], "added": []}],
+        }
+    ]
     findings = _deterministic_regression_checks(patches)
     assert findings == []
 

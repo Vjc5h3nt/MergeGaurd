@@ -124,7 +124,9 @@ def review_pull_request(
     try:
         if repo_context is None:
             try:
-                head_sha = get_github_client().get_pull_request(owner, repo, pr_number)["head"]["sha"]
+                head_sha = get_github_client().get_pull_request(owner, repo, pr_number)["head"][
+                    "sha"
+                ]
                 with trace.span("orchestrator.load_repo_context", {"pr_ref": pr_ref}):
                     repo_context = load_repo_context(owner, repo, head_sha)
             except Exception as exc:

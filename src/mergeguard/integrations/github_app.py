@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Any
 
 import httpx
 
@@ -52,7 +51,7 @@ def generate_app_jwt(app_id: int, private_key: str) -> str:
 
     now = int(time.time())
     payload = {
-        "iat": now - 60,   # issued 60s ago (handles clock skew)
+        "iat": now - 60,  # issued 60s ago (handles clock skew)
         "exp": now + 540,  # expires in 9 min (max 10)
         "iss": str(app_id),
     }

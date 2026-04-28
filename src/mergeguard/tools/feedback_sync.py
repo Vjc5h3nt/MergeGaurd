@@ -36,9 +36,7 @@ def sync_reactions(conn: Any, gh: Any) -> int:
             thumbs_down = sum(1 for r in reactions if r.get("content") == "-1")
             update_reactions(conn, comment_id, thumbs_up, thumbs_down)
             updated += 1
-            log.debug(
-                "Comment %d: +%d / -%d reactions", comment_id, thumbs_up, thumbs_down
-            )
+            log.debug("Comment %d: +%d / -%d reactions", comment_id, thumbs_up, thumbs_down)
         except Exception as exc:
             log.warning("Failed to fetch reactions for comment %d: %s", comment_id, exc)
 

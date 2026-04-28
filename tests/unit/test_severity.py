@@ -1,7 +1,6 @@
 """Unit tests for scoring/severity.py."""
 
-import pytest
-from mergeguard.scoring.severity import Severity, SEVERITY_SCORE_WEIGHTS
+from mergeguard.scoring.severity import SEVERITY_SCORE_WEIGHTS, Severity
 
 
 def test_severity_ordering():

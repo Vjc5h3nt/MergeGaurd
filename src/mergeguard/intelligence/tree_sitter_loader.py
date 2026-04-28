@@ -19,9 +19,7 @@ LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
 
 # Reverse map: extension -> language
 _EXT_TO_LANG: dict[str, str] = {
-    ext: lang
-    for lang, exts in LANGUAGE_EXTENSIONS.items()
-    for ext in exts
+    ext: lang for lang, exts in LANGUAGE_EXTENSIONS.items() for ext in exts
 }
 
 _PARSERS: dict[str, Any] = {}
@@ -44,7 +42,7 @@ def get_parser(language: str) -> Any:
 
         lang_obj = tree_sitter_languages.get_language(language)
         parser = Parser()
-        parser.set_language(Language(lang_obj))  # type: ignore[arg-type]
+        parser.set_language(Language(lang_obj))  # type: ignore[arg-type,attr-defined]
         _PARSERS[language] = parser
         log.debug("Loaded tree-sitter parser for %s", language)
         return parser

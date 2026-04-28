@@ -45,10 +45,18 @@ If none, return [].
 
 # Patterns for detecting function/class definitions in diff lines
 _FUNC_DEF_PATTERNS = [
-    re.compile(r"^(?P<sign>[-+])\s*(?:async\s+)?def\s+(?P<name>\w+)\s*\((?P<params>[^)]*)\)"),  # Python
-    re.compile(r"^(?P<sign>[-+])\s*(?:export\s+)?(?:async\s+)?function\s+(?P<name>\w+)\s*\((?P<params>[^)]*)\)"),  # JS/TS
-    re.compile(r"^(?P<sign>[-+])\s*func\s+(?:\(\w+\s+\*?\w+\)\s+)?(?P<name>\w+)\s*\((?P<params>[^)]*)\)"),  # Go
-    re.compile(r"^(?P<sign>[-+])\s*(?:public|private|protected|static|\s)+\w[\w<>\[\]]*\s+(?P<name>\w+)\s*\((?P<params>[^)]*)\)"),  # Java
+    re.compile(
+        r"^(?P<sign>[-+])\s*(?:async\s+)?def\s+(?P<name>\w+)\s*\((?P<params>[^)]*)\)"
+    ),  # Python
+    re.compile(
+        r"^(?P<sign>[-+])\s*(?:export\s+)?(?:async\s+)?function\s+(?P<name>\w+)\s*\((?P<params>[^)]*)\)"
+    ),  # JS/TS
+    re.compile(
+        r"^(?P<sign>[-+])\s*func\s+(?:\(\w+\s+\*?\w+\)\s+)?(?P<name>\w+)\s*\((?P<params>[^)]*)\)"
+    ),  # Go
+    re.compile(
+        r"^(?P<sign>[-+])\s*(?:public|private|protected|static|\s)+\w[\w<>\[\]]*\s+(?P<name>\w+)\s*\((?P<params>[^)]*)\)"
+    ),  # Java
 ]
 _CLASS_DEF_RE = re.compile(r"^(?P<sign>[-+])\s*class\s+(?P<name>\w+)")
 
@@ -84,43 +92,47 @@ def _deterministic_regression_checks(patches: list[dict[str, Any]]) -> list[dict
             for sym in removed_syms:
                 name = sym["name"]
                 if name not in added_names and _is_public(name):
-                    findings.append({
-                        "severity": "HIGH",
-                        "category": "regression/removed-symbol",
-                        "message": (
-                            f"`{name}` was removed from `{path}`. "
-                            "Any callers of this symbol will break at runtime."
-                        ),
-                        "path": path,
-                        "line": sym.get("line"),
-                        "suggestion": (
-                            f"If `{name}` is no longer needed, ensure all call sites are updated. "
-                            "If it was renamed, add a deprecation alias."
-                        ),
-                        "deterministic": True,
-                    })
+                    findings.append(
+                        {
+                            "severity": "HIGH",
+                            "category": "regression/removed-symbol",
+                            "message": (
+                                f"`{name}` was removed from `{path}`. "
+                                "Any callers of this symbol will break at runtime."
+                            ),
+                            "path": path,
+                            "line": sym.get("line"),
+                            "suggestion": (
+                                f"If `{name}` is no longer needed, ensure all call sites are updated. "
+                                "If it was renamed, add a deprecation alias."
+                            ),
+                            "deterministic": True,
+                        }
+                    )
 
             # 2. Signature changes (same name, different params)
             for rem_sym in removed_syms:
                 name = rem_sym["name"]
                 for add_sym in added_syms:
                     if add_sym["name"] == name and rem_sym["params"] != add_sym["params"]:
-                        findings.append({
-                            "severity": "HIGH",
-                            "category": "regression/signature-change",
-                            "message": (
-                                f"`{name}` signature changed in `{path}`: "
-                                f"`({rem_sym['params']})` → `({add_sym['params']})`. "
-                                "Existing callers may break."
-                            ),
-                            "path": path,
-                            "line": add_sym.get("line"),
-                            "suggestion": (
-                                "Add a compatibility shim or update all call sites. "
-                                "Consider bumping the API version if this is a public interface."
-                            ),
-                            "deterministic": True,
-                        })
+                        findings.append(
+                            {
+                                "severity": "HIGH",
+                                "category": "regression/signature-change",
+                                "message": (
+                                    f"`{name}` signature changed in `{path}`: "
+                                    f"`({rem_sym['params']})` → `({add_sym['params']})`. "
+                                    "Existing callers may break."
+                                ),
+                                "path": path,
+                                "line": add_sym.get("line"),
+                                "suggestion": (
+                                    "Add a compatibility shim or update all call sites. "
+                                    "Consider bumping the API version if this is a public interface."
+                                ),
+                                "deterministic": True,
+                            }
+                        )
 
             # 3. Possible rename: removed X, added Y (same hunk, same kind)
             only_removed = removed_names - added_names
@@ -129,20 +141,22 @@ def _deterministic_regression_checks(patches: list[dict[str, Any]]) -> list[dict
                 old_name = next(iter(only_removed))
                 new_name = next(iter(only_added))
                 if _is_public(old_name):
-                    findings.append({
-                        "severity": "MEDIUM",
-                        "category": "regression/possible-rename",
-                        "message": (
-                            f"`{old_name}` may have been renamed to `{new_name}` in `{path}`. "
-                            "Callers of `{old_name}` will break."
-                        ),
-                        "path": path,
-                        "suggestion": (
-                            f"Add `{old_name} = {new_name}` as a deprecation alias, "
-                            "or update all call sites."
-                        ),
-                        "deterministic": True,
-                    })
+                    findings.append(
+                        {
+                            "severity": "MEDIUM",
+                            "category": "regression/possible-rename",
+                            "message": (
+                                f"`{old_name}` may have been renamed to `{new_name}` in `{path}`. "
+                                "Callers of `{old_name}` will break."
+                            ),
+                            "path": path,
+                            "suggestion": (
+                                f"Add `{old_name} = {new_name}` as a deprecation alias, "
+                                "or update all call sites."
+                            ),
+                            "deterministic": True,
+                        }
+                    )
 
     return findings
 
@@ -153,22 +167,26 @@ def _extract_symbols(lines: list[str], path: str) -> list[dict[str, Any]]:
         for pattern in _FUNC_DEF_PATTERNS:
             m = pattern.match(line)
             if m:
-                symbols.append({
-                    "name": m.group("name"),
-                    "params": _normalize_params(m.group("params")),
-                    "line": i + 1,
-                    "kind": "function",
-                })
+                symbols.append(
+                    {
+                        "name": m.group("name"),
+                        "params": _normalize_params(m.group("params")),
+                        "line": i + 1,
+                        "kind": "function",
+                    }
+                )
                 break
         else:
             m = _CLASS_DEF_RE.match(line)
             if m:
-                symbols.append({
-                    "name": m.group("name"),
-                    "params": "",
-                    "line": i + 1,
-                    "kind": "class",
-                })
+                symbols.append(
+                    {
+                        "name": m.group("name"),
+                        "params": "",
+                        "line": i + 1,
+                        "kind": "class",
+                    }
+                )
     return symbols
 
 
@@ -177,9 +195,9 @@ def _normalize_params(params: str) -> str:
     parts = []
     for p in params.split(","):
         p = p.strip()
-        p = re.sub(r":.*", "", p)   # remove type annotation
-        p = re.sub(r"=.*", "", p)   # remove default value
-        p = p.strip().lstrip("*")   # strip */**/self/cls markers
+        p = re.sub(r":.*", "", p)  # remove type annotation
+        p = re.sub(r"=.*", "", p)  # remove default value
+        p = p.strip().lstrip("*")  # strip */**/self/cls markers
         if p and p not in {"self", "cls", "args", "kwargs"}:
             parts.append(p)
     return ", ".join(parts)
@@ -236,7 +254,7 @@ def run_regression_review(
             f"```json\n{json.dumps(symbol_graph, indent=2)}\n```\n"
         )
 
-    prompt = f"""PR #{pr_meta.get('number')} — {pr_meta.get('title', '')}
+    prompt = f"""PR #{pr_meta.get("number")} — {pr_meta.get("title", "")}
 
 ## Diff
 {diff_context}
@@ -256,9 +274,10 @@ any additional ones you discover) as a single JSON array.
 
     # Merge: LLM findings take precedence (they may have richer explanations),
     # but ensure all deterministic findings are present.
-    det_keys = {(f.get("category"), f.get("path"), f.get("line")) for f in deterministic}
     llm_keys = {(f.get("category"), f.get("path"), f.get("line")) for f in llm_findings}
-    missed_det = [f for f in deterministic if (f["category"], f.get("path"), f.get("line")) not in llm_keys]
+    missed_det = [
+        f for f in deterministic if (f["category"], f.get("path"), f.get("line")) not in llm_keys
+    ]
 
     return llm_findings + missed_det
 

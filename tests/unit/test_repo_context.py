@@ -28,7 +28,9 @@ def test_custom_rules_rendered():
 
 def test_per_agent_rules_only_shown_for_matching_agent():
     ctx = RepoContext(
-        owner="o", repo="r", ref="abc",
+        owner="o",
+        repo="r",
+        ref="abc",
         per_agent_rules={"security": "Ignore test fixtures."},
     )
     assert "Ignore test fixtures" in ctx.prompt_block("security")
@@ -37,7 +39,9 @@ def test_per_agent_rules_only_shown_for_matching_agent():
 
 def test_docs_rendered_with_path_header():
     ctx = RepoContext(
-        owner="o", repo="r", ref="abc",
+        owner="o",
+        repo="r",
+        ref="abc",
         docs={"docs/ARCHITECTURE.md": "Services must not import from db/."},
     )
     block = ctx.prompt_block()
@@ -47,7 +51,9 @@ def test_docs_rendered_with_path_header():
 
 def test_codeowners_wrapped_in_code_fence():
     ctx = RepoContext(
-        owner="o", repo="r", ref="abc",
+        owner="o",
+        repo="r",
+        ref="abc",
         codeowners="*.py @python-team\n/infra @devops",
     )
     block = ctx.prompt_block()
@@ -58,7 +64,9 @@ def test_codeowners_wrapped_in_code_fence():
 
 def test_combined_block_order_is_stable():
     ctx = RepoContext(
-        owner="o", repo="r", ref="abc",
+        owner="o",
+        repo="r",
+        ref="abc",
         custom_rules="rule-1",
         per_agent_rules={"code_quality": "cq-rule"},
         docs={"ARCHITECTURE.md": "arch-body"},

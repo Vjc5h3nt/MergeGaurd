@@ -1,8 +1,7 @@
 """Unit tests for diff/hunk_mapper.py."""
 
-import pytest
-from mergeguard.diff.hunk_mapper import LineRange, changed_ranges, hunk_to_target_range
-from mergeguard.diff.parser import Hunk, FilePatch
+from mergeguard.diff.hunk_mapper import changed_ranges, hunk_to_target_range
+from mergeguard.diff.parser import FilePatch, Hunk
 
 
 def _make_hunk(target_start: int, target_length: int) -> Hunk:

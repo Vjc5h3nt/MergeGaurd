@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -35,16 +35,18 @@ def record_review_dynamo(
 ) -> str:
     """Insert a review record. Returns the generated review UUID."""
     review_id = str(uuid.uuid4())
-    _reviews_table().put_item(Item={
-        "review_id": review_id,
-        "owner": owner,
-        "repo": repo,
-        "pr_number": pr_number,
-        "github_review_id": github_review_id,
-        "risk_bucket": risk_bucket,
-        "risk_score": risk_score,
-        "reviewed_at": datetime.now(timezone.utc).isoformat(),
-    })
+    _reviews_table().put_item(
+        Item={
+            "review_id": review_id,
+            "owner": owner,
+            "repo": repo,
+            "pr_number": pr_number,
+            "github_review_id": github_review_id,
+            "risk_bucket": risk_bucket,
+            "risk_score": risk_score,
+            "reviewed_at": datetime.now(UTC).isoformat(),
+        }
+    )
     log.debug("Recorded review %s for %s/%s#%d", review_id, owner, repo, pr_number)
     return review_id
 
@@ -59,7 +61,7 @@ def record_findings_dynamo(
     """Bulk-insert findings aligned by index with inline_comment_ids."""
     table = _findings_table()
     with table.batch_writer() as batch:
-        for idx, (f, cid) in enumerate(zip(findings, inline_comment_ids)):
+        for idx, (f, cid) in enumerate(zip(findings, inline_comment_ids, strict=False)):
             path = f.get("path") or ""
             ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
             item: dict[str, Any] = {
@@ -104,13 +106,8 @@ def fetch_examples_dynamo(
 
     table = _findings_table()
     resp = table.scan(
-        FilterExpression=(
-            Attr("category").begins_with(category_prefix)
-            & Attr("thumbs_up").gte(1)
-        ),
-        ProjectionExpression=(
-            "severity, category, message, file_ext, thumbs_up, thumbs_down"
-        ),
+        FilterExpression=(Attr("category").begins_with(category_prefix) & Attr("thumbs_up").gte(1)),
+        ProjectionExpression=("severity, category, message, file_ext, thumbs_up, thumbs_down"),
     )
     items: list[dict[str, Any]] = resp.get("Items", [])
     # Prefer matching extension, fall back to any
@@ -129,9 +126,7 @@ def get_all_findings_with_comments() -> list[dict[str, Any]]:
     table = _findings_table()
     resp = table.scan(
         FilterExpression=Attr("inline_comment_id").exists(),
-        ProjectionExpression=(
-            "review_id, finding_idx, inline_comment_id, #o, repo"
-        ),
+        ProjectionExpression=("review_id, finding_idx, inline_comment_id, #o, repo"),
         ExpressionAttributeNames={"#o": "owner"},
     )
     return resp.get("Items", [])

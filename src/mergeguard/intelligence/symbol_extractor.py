@@ -13,11 +13,11 @@ log = logging.getLogger(__name__)
 @dataclass
 class Symbol:
     name: str
-    kind: str          # function | class | method | variable | constant
+    kind: str  # function | class | method | variable | constant
     file: str
     start_line: int
     end_line: int
-    signature: str     # text of the definition line (for hashing / change detection)
+    signature: str  # text of the definition line (for hashing / change detection)
     signature_hash: str
     language: str
     parent: str | None = None  # enclosing class name for methods

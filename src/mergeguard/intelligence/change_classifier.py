@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from mergeguard.intelligence.symbol_extractor import Symbol
@@ -12,15 +12,15 @@ from mergeguard.intelligence.symbol_extractor import Symbol
 log = logging.getLogger(__name__)
 
 
-class ChangeClass(str, Enum):
-    SIGNATURE = "signature"       # public API / signature changed
-    LOGIC = "logic"               # function body changed, signature same
-    REFACTOR = "refactor"         # pure rename / move / structural
-    CONFIG = "config"             # config / env / infra files changed
-    DOCS = "docs"                 # only docs / comments changed
-    TEST = "test"                 # only test files changed
-    NEW_FILE = "new_file"         # net-new file
-    DELETED = "deleted"           # file removed
+class ChangeClass(StrEnum):
+    SIGNATURE = "signature"  # public API / signature changed
+    LOGIC = "logic"  # function body changed, signature same
+    REFACTOR = "refactor"  # pure rename / move / structural
+    CONFIG = "config"  # config / env / infra files changed
+    DOCS = "docs"  # only docs / comments changed
+    TEST = "test"  # only test files changed
+    NEW_FILE = "new_file"  # net-new file
+    DELETED = "deleted"  # file removed
     UNKNOWN = "unknown"
 
 
@@ -136,17 +136,11 @@ def classify_changes(
     # Annotate config / docs / test file changes
     for path, status in file_status.items():
         if status in ("modified", "added") and _is_config_file(path):
-            deltas.append(
-                SymbolDelta(name="*", file=path, change_class=ChangeClass.CONFIG)
-            )
+            deltas.append(SymbolDelta(name="*", file=path, change_class=ChangeClass.CONFIG))
         elif _is_test_file(path):
-            deltas.append(
-                SymbolDelta(name="*", file=path, change_class=ChangeClass.TEST)
-            )
+            deltas.append(SymbolDelta(name="*", file=path, change_class=ChangeClass.TEST))
         elif _is_docs_file(path):
-            deltas.append(
-                SymbolDelta(name="*", file=path, change_class=ChangeClass.DOCS)
-            )
+            deltas.append(SymbolDelta(name="*", file=path, change_class=ChangeClass.DOCS))
 
     return deltas
 
@@ -157,8 +151,15 @@ def _is_pure_rename(a: Symbol, b: Symbol) -> bool:
 
 def _is_config_file(path: str) -> bool:
     config_extensions = {
-        ".yml", ".yaml", ".json", ".toml", ".ini", ".cfg",
-        ".env", ".dockerfile", "Dockerfile",
+        ".yml",
+        ".yaml",
+        ".json",
+        ".toml",
+        ".ini",
+        ".cfg",
+        ".env",
+        ".dockerfile",
+        "Dockerfile",
     }
     return any(path.endswith(ext) for ext in config_extensions) or "config" in path.lower()
 

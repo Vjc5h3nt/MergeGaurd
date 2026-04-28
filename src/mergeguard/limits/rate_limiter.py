@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 log = logging.getLogger(__name__)
 
@@ -22,15 +22,13 @@ def _rate_key(installation_id: int, date_str: str) -> str:
 
 
 def _today_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 def _ttl_epoch() -> int:
     """Epoch seconds for tomorrow 00:00 UTC + 86400s (~2 days from now)."""
-    now = datetime.now(timezone.utc)
-    tomorrow_midnight = (now + timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    now = datetime.now(UTC)
+    tomorrow_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     return int(tomorrow_midnight.timestamp()) + 86400
 
 
@@ -38,9 +36,9 @@ def _table():
     import boto3
 
     table_name = os.getenv("MERGEGUARD_REVIEWS_TABLE", "mergeguard-reviews")
-    return boto3.resource(
-        "dynamodb", region_name=os.getenv("BEDROCK_REGION", "us-east-1")
-    ).Table(table_name)
+    return boto3.resource("dynamodb", region_name=os.getenv("BEDROCK_REGION", "us-east-1")).Table(
+        table_name
+    )
 
 
 def check_and_increment(installation_id: int, daily_limit: int = 50) -> tuple[bool, int]:

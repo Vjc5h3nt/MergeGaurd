@@ -1,10 +1,9 @@
 """Unit tests for scoring/impact.py."""
 
-import pytest
 from mergeguard.scoring.impact import (
+    annotate_findings_with_impact,
     compute_blast_radius,
     impact_score,
-    annotate_findings_with_impact,
 )
 
 
@@ -62,9 +61,7 @@ def test_impact_score_max():
 
 
 def test_annotate_findings_with_impact():
-    findings = [
-        {"severity": "HIGH", "category": "quality/complexity", "path": "src/foo.py"}
-    ]
+    findings = [{"severity": "HIGH", "category": "quality/complexity", "path": "src/foo.py"}]
     called_by = {"src/foo.py::my_func": ["src/bar.py::caller"]}
     symbol_to_file = {"my_func": "src/foo.py"}
     annotated = annotate_findings_with_impact(findings, called_by, symbol_to_file)

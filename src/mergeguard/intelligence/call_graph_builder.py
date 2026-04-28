@@ -11,8 +11,8 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class CallEdge:
-    caller: str   # fully-qualified: file::ClassName::method_name
-    callee: str   # may be unresolved if cross-file
+    caller: str  # fully-qualified: file::ClassName::method_name
+    callee: str  # may be unresolved if cross-file
 
 
 @dataclass
@@ -77,8 +77,10 @@ def _current_function(node: Any, source_lines: list[str]) -> str | None:
     """Walk up the AST to find the enclosing function/method name."""
     parent = node.parent
     func_types = {
-        "function_definition", "function_declaration",
-        "method_definition", "method_declaration",
+        "function_definition",
+        "function_declaration",
+        "method_definition",
+        "method_declaration",
         "async_function_def",
     }
     while parent is not None:
@@ -114,9 +116,7 @@ def _extract_python_calls(
                 # Attempt cross-file resolution
                 base = callee_name.split(".")[0]
                 callee_file = import_map.get(base, "")
-                callee_fq = (
-                    f"{callee_file}::{callee_name}" if callee_file else callee_name
-                )
+                callee_fq = f"{callee_file}::{callee_name}" if callee_file else callee_name
                 graph.edges.append(CallEdge(caller=caller_fq, callee=callee_fq))
         for child in node.children:
             walk(child)
@@ -142,9 +142,7 @@ def _extract_js_calls(
                 caller_fq = f"{file_path}::{caller}"
                 base = callee_name.split(".")[0]
                 callee_file = import_map.get(base, "")
-                callee_fq = (
-                    f"{callee_file}::{callee_name}" if callee_file else callee_name
-                )
+                callee_fq = f"{callee_file}::{callee_name}" if callee_file else callee_name
                 graph.edges.append(CallEdge(caller=caller_fq, callee=callee_fq))
         for child in node.children:
             walk(child)

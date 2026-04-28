@@ -52,11 +52,11 @@ def ast_query(
         }
 
     if query_type == "dependency_graph":
-        graph = build_dependency_graph(tree, source, file_path, language)
+        dep_graph = build_dependency_graph(tree, source, file_path, language)
         return {
             "file": file_path,
             "language": language,
-            "dependency_graph": graph.to_dict(),
+            "dependency_graph": dep_graph.to_dict(),
         }
 
     return {"error": f"Unknown query_type: {query_type}"}

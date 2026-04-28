@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -43,9 +42,7 @@ def main(
 @app.command()
 def review(
     pr: str = typer.Option(..., "--pr", help="PR URL or owner/repo#number"),
-    config_file: Optional[str] = typer.Option(
-        None, "--config", "-c", help="Path to .mergeguard.yml"
-    ),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to .mergeguard.yml"),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Print review without posting to GitHub."
     ),
@@ -74,8 +71,7 @@ def review(
 
     orchestrator = build_orchestrator()
     result = orchestrator(
-        f"Review GitHub PR: owner={owner} repo={repo} pr_number={number} "
-        f"dry_run={dry_run}"
+        f"Review GitHub PR: owner={owner} repo={repo} pr_number={number} dry_run={dry_run}"
     )
 
     console.print(result)
@@ -107,9 +103,7 @@ def _parse_pr_ref(pr: str) -> tuple[str, str, int] | None:
     import re
 
     # URL form: https://github.com/owner/repo/pull/123
-    url_match = re.match(
-        r"https?://github\.com/([^/]+)/([^/]+)/pull/(\d+)", pr
-    )
+    url_match = re.match(r"https?://github\.com/([^/]+)/([^/]+)/pull/(\d+)", pr)
     if url_match:
         return url_match.group(1), url_match.group(2), int(url_match.group(3))
 

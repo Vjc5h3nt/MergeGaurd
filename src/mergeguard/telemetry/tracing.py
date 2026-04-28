@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import logging
-import os
 import time
 from typing import Any
 
@@ -20,7 +19,7 @@ class ReviewTrace:
         self.start_time = time.time()
         self.spans: list[dict[str, Any]] = []
 
-    def span(self, name: str, attributes: dict[str, Any] | None = None) -> "SpanContext":
+    def span(self, name: str, attributes: dict[str, Any] | None = None) -> SpanContext:
         return SpanContext(trace=self, name=name, attributes=attributes or {})
 
     def finish(self) -> dict[str, Any]:
@@ -47,7 +46,7 @@ class SpanContext:
         self.attributes = attributes
         self._start = time.time()
 
-    def __enter__(self) -> "SpanContext":
+    def __enter__(self) -> SpanContext:
         return self
 
     def __exit__(self, *args: Any) -> None:
@@ -98,20 +97,20 @@ def get_tracer(name: str = "mergeguard") -> Any:
 # Active trace propagation via ContextVar
 # ---------------------------------------------------------------------------
 
-_active_trace: contextvars.ContextVar["ReviewTrace | None"] = contextvars.ContextVar(
+_active_trace: contextvars.ContextVar[ReviewTrace | None] = contextvars.ContextVar(
     "mergeguard_active_trace", default=None
 )
 
 
-def set_active_trace(trace: "ReviewTrace") -> contextvars.Token:  # type: ignore[type-arg]
+def set_active_trace(trace: ReviewTrace) -> contextvars.Token:  # type: ignore[type-arg]
     return _active_trace.set(trace)
 
 
-def get_active_trace() -> "ReviewTrace | None":
+def get_active_trace() -> ReviewTrace | None:
     return _active_trace.get()
 
 
-def reset_active_trace(token: "contextvars.Token") -> None:  # type: ignore[type-arg]
+def reset_active_trace(token: contextvars.Token) -> None:  # type: ignore[type-arg]
     _active_trace.reset(token)
 
 

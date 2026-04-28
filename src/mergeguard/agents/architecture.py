@@ -41,8 +41,12 @@ Return findings as a JSON array inside ```json ... ```. If none, return [].
 
 # Import statement patterns per language
 _IMPORT_PATTERNS = [
-    re.compile(r"^(?P<sign>[+-])\s*(?:from\s+(?P<from>[\w.]+)\s+)?import\s+(?P<what>.+)$"),   # Python
-    re.compile(r"^(?P<sign>[+-])\s*import\s+(?:\{[^}]+\}|[\w*]+)\s+from\s+['\"](?P<from>[^'\"]+)['\"]"),  # JS/TS
+    re.compile(
+        r"^(?P<sign>[+-])\s*(?:from\s+(?P<from>[\w.]+)\s+)?import\s+(?P<what>.+)$"
+    ),  # Python
+    re.compile(
+        r"^(?P<sign>[+-])\s*import\s+(?:\{[^}]+\}|[\w*]+)\s+from\s+['\"](?P<from>[^'\"]+)['\"]"
+    ),  # JS/TS
     re.compile(r"^(?P<sign>[+-])\s*import\s+\"(?P<from>[^\"]+)\""),  # Go
     re.compile(r"^(?P<sign>[+-])\s*import\s+(?P<from>[\w.]+);"),  # Java
 ]
@@ -96,7 +100,13 @@ def _extract_import_diff(patches: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _path_to_module(path: str) -> str:
     """Convert a file path to a rough module name."""
-    return path.replace("/", ".").replace("\\", ".").removesuffix(".py").removesuffix(".ts").removesuffix(".js")
+    return (
+        path.replace("/", ".")
+        .replace("\\", ".")
+        .removesuffix(".py")
+        .removesuffix(".ts")
+        .removesuffix(".js")
+    )
 
 
 def _import_to_module(imp: str) -> str | None:
@@ -143,18 +153,16 @@ def run_architecture_review(
     repo_block = repo_ctx.prompt_block("architecture") if repo_ctx else ""
 
     import_context = (
-        "\n## Import Changes (structured)\n"
-        f"```json\n{json.dumps(import_diff, indent=2)}\n```\n"
+        f"\n## Import Changes (structured)\n```json\n{json.dumps(import_diff, indent=2)}\n```\n"
     )
 
     dep_context = ""
     if dep_graph:
         dep_context = (
-            f"\n## Full Dependency Graph\n"
-            f"```json\n{json.dumps(dep_graph, indent=2)}\n```\n"
+            f"\n## Full Dependency Graph\n```json\n{json.dumps(dep_graph, indent=2)}\n```\n"
         )
 
-    prompt = f"""PR #{pr_meta.get('number')} — {pr_meta.get('title', '')}
+    prompt = f"""PR #{pr_meta.get("number")} — {pr_meta.get("title", "")}
 
 ## Diff
 {diff_context}

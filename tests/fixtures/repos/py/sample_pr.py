@@ -17,7 +17,7 @@ def validate_amount(amount):
         return False
     if not isinstance(amount, (int, float)):
         return False
-    if amount == 0:
+    if amount == 0:  # noqa: SIM103 — fixture file intentionally not refactored
         return False
     return True
 

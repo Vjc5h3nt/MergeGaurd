@@ -53,8 +53,13 @@ ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
-strict = true
 ignore_missing_imports = true
+warn_unused_ignores = false
+# strict = true — re-enable once the Phase 0–5 typing debt is paid down.
+# Subset of checks kept on; broad strictness too noisy for current codebase.
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unreachable = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

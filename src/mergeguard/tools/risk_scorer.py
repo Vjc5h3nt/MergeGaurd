@@ -71,15 +71,10 @@ def calculate_risk_score(findings: list[dict[str, Any]]) -> dict[str, Any]:
         # Map category prefix to dimension
         dim = _category_to_dimension(category)
         if dim in dimension_scores:
-            dimension_scores[dim] = min(
-                100, dimension_scores[dim] + finding_score
-            )
+            dimension_scores[dim] = min(100, dimension_scores[dim] + finding_score)
 
     # Weighted sum capped at 100
-    raw_score = sum(
-        dimension_scores[dim] * weight
-        for dim, weight in _DIMENSION_WEIGHTS.items()
-    )
+    raw_score = sum(dimension_scores[dim] * weight for dim, weight in _DIMENSION_WEIGHTS.items())
     score = min(100, int(raw_score))
     bucket = _score_to_bucket(score)
 

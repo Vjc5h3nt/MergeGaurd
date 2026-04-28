@@ -43,7 +43,7 @@ def fetch_examples(
         ).fetchall()
 
     col_names = ("severity", "category", "message", "file_ext", "thumbs_up", "thumbs_down")
-    return [dict(zip(col_names, row)) for row in rows]
+    return [dict(zip(col_names, row, strict=False)) for row in rows]
 
 
 def format_examples_prompt(examples: list[dict[str, Any]]) -> str:
@@ -53,8 +53,7 @@ def format_examples_prompt(examples: list[dict[str, Any]]) -> str:
     lines = ["## Real examples of issues confirmed by reviewers", ""]
     for ex in examples:
         lines.append(
-            f"- **{ex['severity']}** `{ex['category']}` — {ex['message']}"
-            f" *(👍 {ex['thumbs_up']})*"
+            f"- **{ex['severity']}** `{ex['category']}` — {ex['message']} *(👍 {ex['thumbs_up']})*"
         )
     lines.append("")
     return "\n".join(lines)

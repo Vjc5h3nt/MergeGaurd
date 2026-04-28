@@ -92,19 +92,21 @@ def record_findings(
 ) -> None:
     """Bulk-insert findings aligned by index with inline_comment_ids."""
     rows = []
-    for idx, (f, cid) in enumerate(zip(findings, inline_comment_ids)):
+    for idx, (f, cid) in enumerate(zip(findings, inline_comment_ids, strict=False)):
         path = f.get("path") or ""
         ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
-        rows.append((
-            review_fk,
-            idx,
-            cid,
-            f.get("severity", "INFO"),
-            f.get("category", ""),
-            f.get("message", ""),
-            path,
-            ext,
-        ))
+        rows.append(
+            (
+                review_fk,
+                idx,
+                cid,
+                f.get("severity", "INFO"),
+                f.get("category", ""),
+                f.get("message", ""),
+                path,
+                ext,
+            )
+        )
     conn.executemany(
         "INSERT INTO findings "
         "(review_fk, finding_idx, inline_comment_id, severity, category, "
@@ -140,7 +142,4 @@ def get_unsynced_comments(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         WHERE  f.inline_comment_id IS NOT NULL
         """
     ).fetchall()
-    return [
-        {"id": row[0], "comment_id": row[1], "owner": row[2], "repo": row[3]}
-        for row in rows
-    ]
+    return [{"id": row[0], "comment_id": row[1], "owner": row[2], "repo": row[3]} for row in rows]

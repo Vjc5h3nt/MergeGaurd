@@ -13,7 +13,7 @@ class Hunk:
     source_length: int
     target_start: int
     target_length: int
-    added_lines: list[tuple[int, str]]    # (line_number, content)
+    added_lines: list[tuple[int, str]]  # (line_number, content)
     removed_lines: list[tuple[int, str]]  # (line_number, content)
     context_lines: list[tuple[int, str]]  # (line_number, content)
     section_header: str = ""
@@ -21,8 +21,8 @@ class Hunk:
 
 @dataclass
 class FilePatch:
-    path: str                          # target (new) path
-    source_path: str                   # source (old) path
+    path: str  # target (new) path
+    source_path: str  # source (old) path
     is_new_file: bool
     is_deleted_file: bool
     is_renamed: bool

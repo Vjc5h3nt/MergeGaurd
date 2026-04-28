@@ -52,11 +52,13 @@ class RepoContext:
     ref: str
 
     # From .github/mergeguard.yml
-    custom_rules: str = ""              # free-form markdown block the user writes
+    custom_rules: str = ""  # free-form markdown block the user writes
     doc_paths: list[str] = field(default_factory=list)
     risk_thresholds: dict[str, int] = field(default_factory=dict)
     disabled_agents: list[str] = field(default_factory=list)
-    per_agent_rules: dict[str, str] = field(default_factory=dict)  # e.g. {"security": "Never flag X"}
+    per_agent_rules: dict[str, str] = field(
+        default_factory=dict
+    )  # e.g. {"security": "Never flag X"}
 
     # Fetched docs: {path: content}
     docs: dict[str, str] = field(default_factory=dict)
@@ -114,6 +116,7 @@ class RepoContext:
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
+
 
 def load_repo_context(owner: str, repo: str, ref: str) -> RepoContext:
     """Load per-repo context using the current GitHubClient singleton.
@@ -184,7 +187,11 @@ def load_repo_context(owner: str, repo: str, ref: str) -> RepoContext:
 
     log.info(
         "RepoContext loaded: %s/%s (rules=%s, docs=%d, codeowners=%s)",
-        owner, repo, bool(ctx.custom_rules), len(ctx.docs), bool(ctx.codeowners),
+        owner,
+        repo,
+        bool(ctx.custom_rules),
+        len(ctx.docs),
+        bool(ctx.codeowners),
     )
     return ctx
 
@@ -192,6 +199,7 @@ def load_repo_context(owner: str, repo: str, ref: str) -> RepoContext:
 # ---------------------------------------------------------------------------
 # YAML coercion helpers — user input is untrusted shape-wise
 # ---------------------------------------------------------------------------
+
 
 def _as_str(v: Any) -> str:
     if v is None:
@@ -240,18 +248,18 @@ def _truncate(s: str, limit: int) -> str:
 # agents read it at the point they build their prompt. Same pattern as
 # telemetry.tracing._active_trace.
 
-_active_repo_context: contextvars.ContextVar["RepoContext | None"] = contextvars.ContextVar(
+_active_repo_context: contextvars.ContextVar[RepoContext | None] = contextvars.ContextVar(
     "mergeguard_active_repo_context", default=None
 )
 
 
-def set_active_repo_context(ctx: "RepoContext") -> contextvars.Token:  # type: ignore[type-arg]
+def set_active_repo_context(ctx: RepoContext) -> contextvars.Token:  # type: ignore[type-arg]
     return _active_repo_context.set(ctx)
 
 
-def get_active_repo_context() -> "RepoContext | None":
+def get_active_repo_context() -> RepoContext | None:
     return _active_repo_context.get()
 
 
-def reset_active_repo_context(token: "contextvars.Token") -> None:  # type: ignore[type-arg]
+def reset_active_repo_context(token: contextvars.Token) -> None:  # type: ignore[type-arg]
     _active_repo_context.reset(token)

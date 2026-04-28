@@ -13,7 +13,7 @@ class Severity(IntEnum):
     INFO = 1
 
     @classmethod
-    def from_str(cls, value: str) -> "Severity":
+    def from_str(cls, value: str) -> Severity:
         try:
             return cls[value.upper()]
         except KeyError:
@@ -35,12 +35,9 @@ SEVERITY_RUBRIC = {
         "Should be addressed before merge."
     ),
     Severity.LOW: (
-        "Minor issue or improvement opportunity. Address if convenient, "
-        "does not block merge."
+        "Minor issue or improvement opportunity. Address if convenient, does not block merge."
     ),
-    Severity.INFO: (
-        "Informational observation with no direct risk. For developer awareness only."
-    ),
+    Severity.INFO: ("Informational observation with no direct risk. For developer awareness only."),
 }
 
 # Weights for risk score calculation

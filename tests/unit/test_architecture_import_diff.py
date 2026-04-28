@@ -1,6 +1,5 @@
 """Unit tests for architecture agent import diff extraction."""
 
-import pytest
 from mergeguard.agents.architecture import _extract_import_diff
 
 

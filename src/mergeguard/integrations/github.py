@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import time
+from datetime import UTC
 from typing import Any
 
 import httpx
@@ -252,9 +253,9 @@ class GitHubClient:
 
 
 def _now_iso() -> str:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 _client: GitHubClient | None = None

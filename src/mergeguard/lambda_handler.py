@@ -35,6 +35,7 @@ def _load_secrets() -> tuple[str, str]:
 # DynamoDB review lock — prevents concurrent reviews on the same PR
 # ---------------------------------------------------------------------------
 
+
 def _lock_key(owner: str, repo: str, pr_number: int) -> str:
     return f"lock#{owner}/{repo}#{pr_number}"
 
@@ -45,11 +46,17 @@ def _acquire_lock(owner: str, repo: str, pr_number: int) -> bool:
     from boto3.dynamodb.conditions import Attr
 
     table_name = os.getenv("MERGEGUARD_REVIEWS_TABLE", "mergeguard-reviews")
-    table = boto3.resource("dynamodb", region_name=os.getenv("BEDROCK_REGION", "us-east-1")).Table(table_name)
+    table = boto3.resource("dynamodb", region_name=os.getenv("BEDROCK_REGION", "us-east-1")).Table(
+        table_name
+    )
     ttl = int(time.time()) + 900  # auto-expire after 15 min in case Lambda crashes
     try:
         table.put_item(
-            Item={"review_id": _lock_key(owner, repo, pr_number), "status": "in_progress", "ttl": ttl},
+            Item={
+                "review_id": _lock_key(owner, repo, pr_number),
+                "status": "in_progress",
+                "ttl": ttl,
+            },
             ConditionExpression=Attr("review_id").not_exists(),
         )
         return True
@@ -59,8 +66,11 @@ def _acquire_lock(owner: str, repo: str, pr_number: int) -> bool:
 
 def _release_lock(owner: str, repo: str, pr_number: int) -> None:
     import boto3
+
     table_name = os.getenv("MERGEGUARD_REVIEWS_TABLE", "mergeguard-reviews")
-    table = boto3.resource("dynamodb", region_name=os.getenv("BEDROCK_REGION", "us-east-1")).Table(table_name)
+    table = boto3.resource("dynamodb", region_name=os.getenv("BEDROCK_REGION", "us-east-1")).Table(
+        table_name
+    )
     try:
         table.delete_item(Key={"review_id": _lock_key(owner, repo, pr_number)})
     except Exception as exc:
@@ -71,9 +81,11 @@ def _release_lock(owner: str, repo: str, pr_number: int) -> None:
 # GitHub comment helpers
 # ---------------------------------------------------------------------------
 
+
 def _post_comment(owner: str, repo: str, pr_number: int, body: str) -> int | None:
     """Post a comment on the PR and return the comment ID."""
     import httpx
+
     token = os.environ.get("GITHUB_TOKEN", "")
     resp = httpx.post(
         f"https://api.github.com/repos/{owner}/{repo}/issues/{pr_number}/comments",
@@ -90,6 +102,7 @@ def _post_comment(owner: str, repo: str, pr_number: int, body: str) -> int | Non
 def _update_comment(owner: str, repo: str, comment_id: int, body: str) -> None:
     """Edit an existing comment by ID."""
     import httpx
+
     token = os.environ.get("GITHUB_TOKEN", "")
     httpx.patch(
         f"https://api.github.com/repos/{owner}/{repo}/issues/comments/{comment_id}",
@@ -102,6 +115,7 @@ def _update_comment(owner: str, repo: str, comment_id: int, body: str) -> None:
 # ---------------------------------------------------------------------------
 # Lambda entry point
 # ---------------------------------------------------------------------------
+
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Lambda entry point — handles GitHub webhooks and EventBridge scheduled sync."""
@@ -149,7 +163,10 @@ def _handle_github_webhook(event: dict[str, Any]) -> dict[str, Any]:
 
     if action == "review_requested":
         requested = payload.get("requested_reviewer", {})
-        if requested.get("type") != "Bot" and "mergegaurd" not in requested.get("login", "").lower():
+        if (
+            requested.get("type") != "Bot"
+            and "mergegaurd" not in requested.get("login", "").lower()
+        ):
             return {"statusCode": 200, "body": "Skipped — review not requested from mergegaurd-ai"}
 
     pr = payload.get("pull_request", {})
@@ -196,8 +213,8 @@ def _run_review(
 
     # ── Auth ──────────────────────────────────────────────────────────────────
     if installation_id:
-        from mergeguard.integrations.github_app import get_installation_token
         import mergeguard.integrations.github as gh_module
+        from mergeguard.integrations.github_app import get_installation_token
 
         token = get_installation_token(
             int(os.environ["GITHUB_APP_ID"]),
@@ -226,11 +243,17 @@ def _run_review(
             _post_comment(owner, repo, pr_number, msg)
             log.warning(
                 "Rate limit hit for installation %s: %d/%d",
-                installation_id, count, daily_limit,
+                installation_id,
+                count,
+                daily_limit,
             )
             return {"statusCode": 429, "body": f"Rate limit: {count}/{daily_limit}"}
-        log.info("Rate limit check passed: %d/%d for installation %s",
-                 count, daily_limit, installation_id)
+        log.info(
+            "Rate limit check passed: %d/%d for installation %s",
+            count,
+            daily_limit,
+            installation_id,
+        )
 
     # ── Lock — reject if already running ─────────────────────────────────────
     if not _acquire_lock(owner, repo, pr_number):
@@ -244,30 +267,41 @@ def _run_review(
 
     # ── Acknowledge — post "running" comment ──────────────────────────────────
     status_comment_id = _post_comment(
-        owner, repo, pr_number,
+        owner,
+        repo,
+        pr_number,
         "🔍 **MergeGuard review started**\n\n"
         "Running code quality, security, regression, and architecture checks...\n\n"
-        "_Results will appear as a full review comment when complete (~3–5 min)._"
+        "_Results will appear as a full review comment when complete (~3–5 min)._",
     )
     log.info("Starting review for %s/%s#%d", owner, repo, pr_number)
 
     try:
         from mergeguard.agents.orchestrator import review_pull_request
+
         result = review_pull_request(owner=owner, repo=repo, pr_number=pr_number, dry_run=False)
         log.info("Review complete: %s/%s#%d", owner, repo, pr_number)
 
         # Update the status comment to show completion
         if status_comment_id:
-            _update_comment(owner, repo, status_comment_id,
-                "✅ **MergeGuard review complete** — see the review comment above.")
+            _update_comment(
+                owner,
+                repo,
+                status_comment_id,
+                "✅ **MergeGuard review complete** — see the review comment above.",
+            )
 
         return {"statusCode": 200, "body": json.dumps({"pr": result["pr"]})}
 
     except Exception as exc:
         log.exception("Review failed for %s/%s#%d", owner, repo, pr_number)
         if status_comment_id:
-            _update_comment(owner, repo, status_comment_id,
-                f"❌ **MergeGuard review failed**\n\n```\n{str(exc)[:300]}\n```")
+            _update_comment(
+                owner,
+                repo,
+                status_comment_id,
+                f"❌ **MergeGuard review failed**\n\n```\n{str(exc)[:300]}\n```",
+            )
         return {"statusCode": 500, "body": str(exc)}
 
     finally:
@@ -277,6 +311,7 @@ def _run_review(
 # ---------------------------------------------------------------------------
 # Feedback sync
 # ---------------------------------------------------------------------------
+
 
 def _handle_feedback_sync() -> dict[str, Any]:
     """Poll GitHub reactions on all stored inline comments and update DynamoDB."""
@@ -324,7 +359,11 @@ def _handle_feedback_sync() -> dict[str, Any]:
                         )
                         updated += 1
                     except Exception as exc:
-                        log.warning("Reaction fetch failed for comment %s: %s", item["inline_comment_id"], exc)
+                        log.warning(
+                            "Reaction fetch failed for comment %s: %s",
+                            item["inline_comment_id"],
+                            exc,
+                        )
             except Exception as exc:
                 log.warning("Skipped %s/%s: %s", owner, repo, exc)
 
@@ -339,7 +378,5 @@ def _handle_feedback_sync() -> dict[str, Any]:
 def _verify_signature(secret: str, body: str, signature: str) -> bool:
     if not signature.startswith("sha256="):
         return False
-    expected = "sha256=" + hmac.new(
-        secret.encode(), body.encode(), hashlib.sha256
-    ).hexdigest()
+    expected = "sha256=" + hmac.new(secret.encode(), body.encode(), hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)

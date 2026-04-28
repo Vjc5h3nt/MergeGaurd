@@ -8,7 +8,11 @@ from typing import Any
 
 from strands import tool
 
-from mergeguard.scoring.impact import annotate_findings_with_impact, compute_blast_radius, impact_score
+from mergeguard.scoring.impact import (
+    annotate_findings_with_impact,
+    compute_blast_radius,
+    impact_score,
+)
 
 log = logging.getLogger(__name__)
 
@@ -87,8 +91,20 @@ def _build_called_by_graph(patches: list[dict[str, Any]]) -> dict[str, list[str]
                 # Detect calls within the current function
                 if current_function:
                     for callee in call_re.findall(line):
-                        if callee not in {"if", "for", "while", "return", "print", "len",
-                                          "str", "int", "list", "dict", "set", "bool"}:
+                        if callee not in {
+                            "if",
+                            "for",
+                            "while",
+                            "return",
+                            "print",
+                            "len",
+                            "str",
+                            "int",
+                            "list",
+                            "dict",
+                            "set",
+                            "bool",
+                        }:
                             full_callee = f"{file_path}::{callee}"
                             calls.setdefault(current_function, []).append(full_callee)
 
@@ -105,9 +121,7 @@ def _build_symbol_to_file(patches: list[dict[str, Any]]) -> dict[str, str]:
     """Map changed symbol names to their file path."""
     symbol_to_file: dict[str, str] = {}
 
-    func_def_re = re.compile(
-        r"^[-+]\s*(?:async def |def |function |func |class )(\w+)\s*[\(:]"
-    )
+    func_def_re = re.compile(r"^[-+]\s*(?:async def |def |function |func |class )(\w+)\s*[\(:]")
 
     for patch in patches:
         file_path = patch.get("path", "")

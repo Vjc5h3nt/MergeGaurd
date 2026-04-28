@@ -58,9 +58,9 @@ def run_code_quality_review(
     examples_block = get_examples_block("quality", dominant_file_ext(patches))
     repo_block = repo_ctx.prompt_block("code_quality") if repo_ctx else ""
 
-    prompt = f"""PR #{pr_meta.get('number')} — {pr_meta.get('title', '')}
-Author: {pr_meta.get('author', 'unknown')}
-Changed files: {pr_meta.get('changed_files', '?')} | +{pr_meta.get('additions', 0)} -{pr_meta.get('deletions', 0)}
+    prompt = f"""PR #{pr_meta.get("number")} — {pr_meta.get("title", "")}
+Author: {pr_meta.get("author", "unknown")}
+Changed files: {pr_meta.get("changed_files", "?")} | +{pr_meta.get("additions", 0)} -{pr_meta.get("deletions", 0)}
 
 ## Diff
 {diff_context}

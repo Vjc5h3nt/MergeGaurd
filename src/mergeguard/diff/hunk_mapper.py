@@ -59,16 +59,10 @@ def build_line_map(patch: FilePatch) -> dict[int, int]:
     for hunk in patch.hunks:
         src = hunk.source_start
         tgt = hunk.target_start
-        for line in (
-            sorted(hunk.context_lines + hunk.added_lines + hunk.removed_lines)
-        ):
+        for line in sorted(hunk.context_lines + hunk.added_lines + hunk.removed_lines):
             # context lines exist in both; removed only in source; added only in target
             _ = line  # we iterate by offset below
 
-        # Re-derive from raw hunk offsets
-        s_off, t_off = hunk.source_start, hunk.target_start
-        for removed_ln, _ in hunk.removed_lines:
-            s_off = removed_ln
         for ctx_ln, _ in hunk.context_lines:
             mapping[ctx_ln] = ctx_ln  # context: same in both (simplified)
         _ = src, tgt  # silence unused warning

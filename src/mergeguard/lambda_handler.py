@@ -210,6 +210,28 @@ def _run_review(
     else:
         log.warning("No installation_id — falling back to GITHUB_TOKEN env var")
 
+    # ── Rate limit — reject if installation is over daily quota ──────────────
+    if installation_id:
+        from mergeguard.limits import check_and_increment
+
+        daily_limit = int(os.getenv("MERGEGUARD_DAILY_LIMIT_PER_INSTALL", "50"))
+        allowed, count = check_and_increment(int(installation_id), daily_limit=daily_limit)
+        if not allowed:
+            msg = (
+                f"⏸️ **MergeGuard daily review limit reached** "
+                f"({count}/{daily_limit} reviews today for this installation).\n\n"
+                "The counter resets at 00:00 UTC. Contact the MergeGuard maintainers "
+                "if you need a higher limit."
+            )
+            _post_comment(owner, repo, pr_number, msg)
+            log.warning(
+                "Rate limit hit for installation %s: %d/%d",
+                installation_id, count, daily_limit,
+            )
+            return {"statusCode": 429, "body": f"Rate limit: {count}/{daily_limit}"}
+        log.info("Rate limit check passed: %d/%d for installation %s",
+                 count, daily_limit, installation_id)
+
     # ── Lock — reject if already running ─────────────────────────────────────
     if not _acquire_lock(owner, repo, pr_number):
         msg = (
